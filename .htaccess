@@ -1,0 +1,58 @@
+# Karneval Reservierungssystem - Apache Konfiguration
+
+Options -Indexes
+Options -FollowSymLinks
+
+# HTTPS erzwingen (auskommentiert wenn lokale Entwicklung)
+# RewriteEngine On
+# RewriteCond %{HTTPS} off
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# PHP-Fehlerseiten
+ErrorDocument 403 /pages/error_403.php
+ErrorDocument 404 /pages/error_404.php
+
+# Uploads-Verzeichnis vor direktem Zugriff schützen
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^uploads/(.*)$ - [F,L]
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Sensible Dateien sperren
+<FilesMatch "\.(sql|log|env|ini|conf|bak)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# PHP-Dateien in uploads/ sperren
+<Directory "/var/www/html/uploads">
+    <FilesMatch "\.php$">
+        Order Allow,Deny
+        Deny from all
+    </FilesMatch>
+</Directory>
+
+# Caching für statische Assets
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+# Komprimierung
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript text/plain
+</IfModule>

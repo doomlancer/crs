@@ -1,0 +1,24 @@
+# Logs
+logs/
+*.log
+
+# Uploads (Benutzerdateien)
+uploads/*
+!uploads/.gitkeep
+
+# Konfiguration mit Geheimnissen (nicht committen!)
+# config.php enthält DB-Credentials - in Produktion .gitignore anpassen
+# config.php
+
+# IDE-Dateien
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS-Dateien
+.DS_Store
+Thumbs.db
+
+# PHP-Caches
+.php_cs.cache

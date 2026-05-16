@@ -1,0 +1,345 @@
+/* =============================================
+   Karneval Reservierungssystem - Hauptstylesheet
+   ============================================= */
+
+/* ---- Custom Properties ---- */
+:root {
+    --karneval-gold:    #f59e0b;
+    --karneval-gold-d:  #d97706;
+    --karneval-dark:    #1a1a2e;
+    --karneval-navy:    #16213e;
+    --karneval-blue:    #0f3460;
+    --karneval-accent:  #e94560;
+    --bs-font-sans-serif: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ---- Base ---- */
+body {
+    font-family: var(--bs-font-sans-serif);
+    background-color: #f8fafc;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main { flex: 1 0 auto; }
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: var(--karneval-gold); border-radius: 4px; }
+
+/* =====================
+   Auth Pages
+   ===================== */
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--karneval-dark) 0%, var(--karneval-navy) 50%, var(--karneval-blue) 100%);
+    padding: 20px;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 440px;
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.auth-card .card-header {
+    background: linear-gradient(135deg, var(--karneval-gold), var(--karneval-gold-d));
+    color: #000;
+    text-align: center;
+    padding: 24px 20px 16px;
+    border: none;
+}
+
+.auth-card .card-header .brand-icon {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.auth-logo {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 10px;
+}
+
+/* =====================
+   Hero Section
+   ===================== */
+.hero-section {
+    position: relative;
+    background: linear-gradient(135deg, var(--karneval-dark) 0%, var(--karneval-navy) 60%, var(--karneval-blue) 100%);
+    min-height: 65vh;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f59e0b' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    pointer-events: none;
+}
+
+.hero-overlay {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+}
+
+.hero-content { animation: fadeInUp 0.8s ease-out; }
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =====================
+   Feature Cards
+   ===================== */
+.feature-card {
+    background: #fff;
+    border-radius: 12px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
+}
+
+.feature-icon { font-size: 2.5rem; }
+
+/* =====================
+   Event Cards
+   ===================== */
+.event-card {
+    border-radius: 12px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid #e2e8f0;
+}
+
+.event-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+/* =====================
+   Navbar
+   ===================== */
+.navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
+}
+
+/* =====================
+   Dashboard KPI Cards
+   ===================== */
+.kpi-card {
+    border-radius: 12px;
+    border: none;
+    overflow: hidden;
+    transition: transform 0.15s;
+}
+
+.kpi-card:hover { transform: translateY(-2px); }
+
+.kpi-card .kpi-value {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.kpi-card .kpi-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.kpi-card .kpi-icon {
+    font-size: 2.5rem;
+    opacity: 0.2;
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+}
+
+.kpi-card { position: relative; padding: 20px 24px 28px; }
+
+.kpi-gold    { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; }
+.kpi-blue    { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; }
+.kpi-green   { background: linear-gradient(135deg, #22c55e, #15803d); color: #fff; }
+.kpi-red     { background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; }
+.kpi-purple  { background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #fff; }
+.kpi-teal    { background: linear-gradient(135deg, #14b8a6, #0f766e); color: #fff; }
+
+/* =====================
+   Tables
+   ===================== */
+.table th {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.table-hover tbody tr:hover { background-color: rgba(245, 158, 11, 0.05); }
+
+/* =====================
+   Progress Bars
+   ===================== */
+.progress { border-radius: 100px; background: #e2e8f0; }
+.progress-bar { border-radius: 100px; transition: width 0.6s ease; }
+
+/* =====================
+   Badges
+   ===================== */
+.badge { font-weight: 500; letter-spacing: 0.02em; }
+
+/* =====================
+   Forms
+   ===================== */
+.form-control:focus, .form-select:focus {
+    border-color: var(--karneval-gold);
+    box-shadow: 0 0 0 0.2rem rgba(245, 158, 11, 0.25);
+}
+
+.form-label { font-weight: 500; font-size: 0.9rem; }
+
+/* Password strength indicator */
+.password-strength-bar {
+    height: 4px;
+    border-radius: 2px;
+    transition: width 0.3s, background 0.3s;
+}
+
+/* =====================
+   Alerts
+   ===================== */
+.alert {
+    border-radius: 10px;
+    border: none;
+    font-weight: 500;
+}
+
+.alert-success { background: #dcfce7; color: #15803d; }
+.alert-danger  { background: #fee2e2; color: #b91c1c; }
+.alert-warning { background: #fef9c3; color: #854d0e; }
+.alert-info    { background: #dbeafe; color: #1e40af; }
+
+/* =====================
+   Cards
+   ===================== */
+.card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.card-header {
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 600;
+}
+
+/* =====================
+   Audit-Log Colors
+   ===================== */
+.audit-login     { border-left: 3px solid #22c55e; }
+.audit-logout    { border-left: 3px solid #6b7280; }
+.audit-delete    { border-left: 3px solid #ef4444; }
+.audit-create    { border-left: 3px solid #3b82f6; }
+.audit-update    { border-left: 3px solid #f59e0b; }
+.audit-reservierung { border-left: 3px solid #8b5cf6; }
+.audit-checkin   { border-left: 3px solid #14b8a6; }
+.audit-stornierung { border-left: 3px solid #f97316; }
+.audit-export    { border-left: 3px solid #06b6d4; }
+
+/* =====================
+   Tischplan
+   ===================== */
+.seat-btn {
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+}
+
+.seat-btn:not([disabled]):hover {
+    filter: brightness(1.15);
+}
+
+/* =====================
+   Pagination
+   ===================== */
+.pagination .page-link {
+    border-radius: 8px;
+    margin: 0 2px;
+    color: var(--karneval-dark);
+    border-color: #e2e8f0;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: var(--karneval-gold);
+    border-color: var(--karneval-gold);
+    color: #000;
+}
+
+/* =====================
+   Footer
+   ===================== */
+.footer {
+    flex-shrink: 0;
+    background: var(--karneval-dark) !important;
+}
+
+/* =====================
+   Utilities
+   ===================== */
+.text-warning  { color: var(--karneval-gold) !important; }
+.btn-warning   { background-color: var(--karneval-gold); border-color: var(--karneval-gold); color: #000; font-weight: 600; }
+.btn-warning:hover { background-color: var(--karneval-gold-d); border-color: var(--karneval-gold-d); color: #000; }
+
+.bg-warning    { background-color: var(--karneval-gold) !important; }
+.border-warning { border-color: var(--karneval-gold) !important; }
+
+/* Smooth page transitions */
+main { animation: pageFadeIn 0.3s ease; }
+
+@keyframes pageFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =====================
+   Responsive
+   ===================== */
+@media (max-width: 576px) {
+    .kpi-card .kpi-value { font-size: 1.5rem; }
+    .hero-section { min-height: 50vh; }
+    .auth-card { max-width: 100%; }
+    .table-responsive { font-size: 0.85rem; }
+}
+
+@media (max-width: 768px) {
+    .tischplan-container { padding: 12px; }
+    .table-row { gap: 15px; }
+    .tisch-block { min-width: 90px; }
+    .seat-btn { width: 32px; height: 32px; font-size: 0.65rem; }
+}
+
+/* Print styles */
+@media print {
+    .navbar, .footer, .btn, .alert-dismissible .btn-close { display: none !important; }
+    body { background: white; }
+    .card { box-shadow: none; border: 1px solid #ddd; }
+}
