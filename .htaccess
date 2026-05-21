@@ -12,14 +12,24 @@ ErrorDocument 404 /pages/error_404.php
 
 # PHP-Dateien in uploads/ sperren (ohne <Directory>)
 <FilesMatch "^uploads/.*\.php$">
-    Order Allow,Deny
-    Deny from all
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
 # Sensible Dateien sperren
 <FilesMatch "\.(sql|log|env|ini|conf|bak)$">
-    Order Allow,Deny
-    Deny from all
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
 # Security Headers
