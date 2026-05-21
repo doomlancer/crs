@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `erstellt_am` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `geaendert_am` DATETIME DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
+  UNIQUE KEY `email` (`email`(191))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================
