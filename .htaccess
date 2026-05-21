@@ -1,7 +1,5 @@
 # Karneval Reservierungssystem - Apache Konfiguration
 
-Options -Indexes -FollowSymLinks
-
 # PHP-Fehlerseiten
 ErrorDocument 403 /pages/error_403.php
 ErrorDocument 404 /pages/error_404.php
