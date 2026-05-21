@@ -6,9 +6,17 @@ logs/
 uploads/*
 !uploads/.gitkeep
 
-# Konfiguration mit Geheimnissen (nicht committen!)
-# config.php enthält DB-Credentials - in Produktion .gitignore anpassen
-# config.php
+# Umgebungsvariablen (nie committen!)
+.env
+
+# Composer
+vendor/
+composer.lock
+
+# Node / Frontend-Build
+node_modules/
+dist/
+npm-debug.log*
 
 # IDE-Dateien
 .idea/

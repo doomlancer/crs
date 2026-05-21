@@ -148,6 +148,9 @@ include __DIR__ . '/../includes/header.php';
                                 <label for="passwort" class="form-label fw-semibold mb-0">
                                     <i class="bi bi-lock me-1"></i>Passwort
                                 </label>
+                                <a href="/pages/forgot_password.php" class="small text-muted text-decoration-none">
+                                    Passwort vergessen?
+                                </a>
                             </div>
                             <div class="input-group mt-1">
                                 <input

@@ -37,14 +37,14 @@ if ($action === 'cancel') {
         if ($reservationId) {
             // Über Reservation-ID stornieren
             $stmt = $pdo->prepare(
-                'SELECT r.id, r.seat_id, r.event_id FROM reservations r
+                'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
                  WHERE r.id = ? AND r.user_id = ? AND r.status = "geplant"'
             );
             $stmt->execute([$reservationId, $userId]);
         } else {
             // Über Seat-ID stornieren
             $stmt = $pdo->prepare(
-                'SELECT r.id, r.seat_id, r.event_id FROM reservations r
+                'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
                  WHERE r.seat_id = ? AND r.user_id = ? AND r.status = "geplant"'
             );
             $stmt->execute([$seatId, $userId]);
@@ -68,6 +68,39 @@ if ($action === 'cancel') {
             ->execute([$reservation['id']]);
 
         logAudit('STORNIERUNG', 'reservations', $reservation['id'], "Stornierung durch Benutzer");
+
+        // Stornierungsbestätigung per E-Mail
+        $stmtUserInfo = $pdo->prepare('SELECT email, vorname FROM users WHERE id = ?');
+        $stmtUserInfo->execute([$userId]);
+        $ui = $stmtUserInfo->fetch();
+        $stmtEvtInfo  = $pdo->prepare('SELECT name FROM events WHERE id = ?');
+        $stmtEvtInfo->execute([$reservation['event_id']]);
+        $ei = $stmtEvtInfo->fetch();
+        if ($ui && $ei) {
+            sendStornierungsbestaetigung($ui['email'], $ui['vorname'], $reservation['buchungsnummer'] ?? '', $ei['name']);
+        }
+
+        // Warteliste: ältesten Eintrag für dieses Event benachrichtigen
+        $stmtWl = $pdo->prepare(
+            'SELECT w.user_id, u.email, u.vorname FROM waitlist w
+             JOIN users u ON w.user_id = u.id
+             WHERE w.event_id = ? ORDER BY w.erstellt_am ASC LIMIT 1'
+        );
+        $stmtWl->execute([$reservation['event_id']]);
+        $nextUser = $stmtWl->fetch();
+        if ($nextUser) {
+            $stmtEvt = $pdo->prepare('SELECT name, datum FROM events WHERE id = ?');
+            $stmtEvt->execute([$reservation['event_id']]);
+            $evtData = $stmtEvt->fetch();
+            $tischUrl = APP_URL . '/pages/tischplan.php?event_id=' . $reservation['event_id'];
+            sendWaitlistNotification(
+                $nextUser['email'],
+                $nextUser['vorname'],
+                $evtData['name'] ?? '',
+                $tischUrl
+            );
+        }
+
         $pdo->commit();
 
         setFlash('success', 'Reservierung erfolgreich storniert.');
@@ -179,6 +212,39 @@ try {
     }
 
     $pdo->commit();
+
+    // Reservierungsbestätigung per E-Mail
+    $stmtUserInfo = $pdo->prepare('SELECT email, vorname FROM users WHERE id = ?');
+    $stmtUserInfo->execute([$userId]);
+    $userInfo = $stmtUserInfo->fetch();
+
+    $stmtEvtInfo = $pdo->prepare('SELECT name, datum FROM events WHERE id = ?');
+    $stmtEvtInfo->execute([$eventId]);
+    $evtInfo = $stmtEvtInfo->fetch();
+
+    if ($userInfo && $evtInfo) {
+        // Sitzplatzdaten für Bestätigungs-E-Mail laden
+        $buchungenFuerMail = [];
+        $stmtBuchDaten = $pdo->prepare(
+            'SELECT r.buchungsnummer, r.preis, t.tischnummer, s.sitzplatznummer
+             FROM reservations r
+             JOIN seats s ON r.seat_id = s.id
+             JOIN tables t ON s.table_id = t.id
+             WHERE r.buchungsnummer = ?'
+        );
+        foreach ($buchungsnummern as $bn) {
+            $stmtBuchDaten->execute([$bn]);
+            $row = $stmtBuchDaten->fetch();
+            if ($row) $buchungenFuerMail[] = $row;
+        }
+        sendReservierungsbestaetigung(
+            $userInfo['email'],
+            $userInfo['vorname'],
+            $buchungenFuerMail,
+            $evtInfo['name'],
+            $evtInfo['datum']
+        );
+    }
 
     $anzahl = count($buchungsnummern);
     $nummernText = implode(', ', $buchungsnummern);

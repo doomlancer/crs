@@ -8,21 +8,21 @@ require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    if (isAjax()) jsonResponse(['error' => 'Method Not Allowed'], 405);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Method Not Allowed', 'data' => null], 405);
     redirect('/pages/kassierer_dashboard.php');
 }
 
 requireRole('kassierer', 'admin');
 
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    if (isAjax()) jsonResponse(['error' => 'CSRF-Fehler'], 403);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'CSRF-Fehler', 'data' => null], 403);
     setFlash('error', 'Sicherheitsfehler.');
     redirect('/pages/kassierer_dashboard.php');
 }
 
 $reservationId = (int)($_POST['reservation_id'] ?? 0);
 if (!$reservationId) {
-    if (isAjax()) jsonResponse(['error' => 'Ungültige ID'], 400);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Ungültige ID', 'data' => null], 400);
     setFlash('error', 'Ungültige Reservierungs-ID.');
     redirect('/pages/kassierer_dashboard.php');
 }
@@ -42,13 +42,13 @@ try {
     $reservation = $stmt->fetch();
 
     if (!$reservation) {
-        if (isAjax()) jsonResponse(['error' => 'Reservierung nicht gefunden'], 404);
+        if (isAjax()) jsonResponse(['success' => false, 'message' => 'Reservierung nicht gefunden', 'data' => null], 404);
         setFlash('error', 'Reservierung nicht gefunden.');
         redirect('/pages/kassierer_dashboard.php');
     }
 
     if ($reservation['status'] !== 'geplant') {
-        if (isAjax()) jsonResponse(['error' => 'Gast bereits eingecheckt oder abgerechnet'], 409);
+        if (isAjax()) jsonResponse(['success' => false, 'message' => 'Gast bereits eingecheckt oder abgerechnet', 'data' => null], 409);
         setFlash('warning', 'Gast ist bereits eingecheckt oder abgerechnet.');
         redirect('/pages/kassierer_guestlist.php');
     }
@@ -70,7 +70,7 @@ try {
         jsonResponse([
             'success' => true,
             'message' => "Gast {$reservation['vorname']} {$reservation['nachname']} erfolgreich eingecheckt.",
-            'buchungsnummer' => $reservation['buchungsnummer'],
+            'data'    => ['buchungsnummer' => $reservation['buchungsnummer']],
         ]);
     }
 
@@ -81,7 +81,7 @@ try {
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     error_log('Check-in Fehler: ' . $e->getMessage());
-    if (isAjax()) jsonResponse(['error' => 'Datenbankfehler'], 500);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Datenbankfehler', 'data' => null], 500);
     setFlash('error', 'Fehler beim Check-in.');
     redirect('/pages/kassierer_dashboard.php');
 }

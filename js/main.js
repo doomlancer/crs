@@ -177,11 +177,12 @@ async function updateTischplan(eventId) {
         if (!resp.ok) return;
         const data = await resp.json();
 
-        if (data.timestamp === lastTimestamp) return;
-        lastTimestamp = data.timestamp;
+        const payload = data.data ?? data;
+        if (payload.timestamp === lastTimestamp) return;
+        lastTimestamp = payload.timestamp;
 
         // Nur Sitze aktualisieren, die sich geändert haben
-        data.tische?.forEach(tisch => {
+        payload.tische?.forEach(tisch => {
             tisch.sitze?.forEach(sitz => {
                 const btn = document.querySelector(`.seat-btn[data-seat-id="${sitz.id}"]`);
                 if (!btn) return;
@@ -201,9 +202,9 @@ async function updateTischplan(eventId) {
         });
 
         // Auslastung aktualisieren
-        if (data.statistik) {
+        if (payload.statistik) {
             const el = document.getElementById('auslastungProzent');
-            if (el) el.textContent = data.statistik.prozent + '%';
+            if (el) el.textContent = payload.statistik.prozent + '%';
         }
     } catch (err) {
         console.warn('Tischplan-Update fehlgeschlagen:', err);

@@ -8,14 +8,14 @@ require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    if (isAjax()) jsonResponse(['error' => 'Method Not Allowed'], 405);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Method Not Allowed', 'data' => null], 405);
     redirect('/pages/kassierer_guestlist.php');
 }
 
 requireRole('kassierer', 'admin');
 
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    if (isAjax()) jsonResponse(['error' => 'CSRF-Fehler'], 403);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'CSRF-Fehler', 'data' => null], 403);
     setFlash('error', 'Sicherheitsfehler.');
     redirect('/pages/kassierer_guestlist.php');
 }
@@ -24,7 +24,7 @@ $reservationId = (int)($_POST['reservation_id'] ?? 0);
 $newStatus     = $_POST['payment_status'] ?? '';
 
 if (!$reservationId || !in_array($newStatus, ['offen', 'bezahlt', 'storniert'], true)) {
-    if (isAjax()) jsonResponse(['error' => 'Ungültige Parameter'], 400);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Ungültige Parameter', 'data' => null], 400);
     setFlash('error', 'Ungültige Eingabe.');
     redirect('/pages/kassierer_guestlist.php');
 }
@@ -45,7 +45,7 @@ try {
     $payment = $stmt->fetch();
 
     if (!$payment) {
-        if (isAjax()) jsonResponse(['error' => 'Zahlung nicht gefunden'], 404);
+        if (isAjax()) jsonResponse(['success' => false, 'message' => 'Zahlung nicht gefunden', 'data' => null], 404);
         setFlash('error', 'Zahlung nicht gefunden.');
         redirect('/pages/kassierer_guestlist.php');
     }
@@ -65,9 +65,9 @@ try {
 
     if (isAjax()) {
         jsonResponse([
-            'success'    => true,
-            'message'    => "Zahlungsstatus aktualisiert: {$altStatus} → {$newStatus}",
-            'new_status' => $newStatus,
+            'success' => true,
+            'message' => "Zahlungsstatus aktualisiert: {$altStatus} → {$newStatus}",
+            'data'    => ['new_status' => $newStatus],
         ]);
     }
 
@@ -77,7 +77,7 @@ try {
 
 } catch (PDOException $e) {
     error_log('Payment Update Fehler: ' . $e->getMessage());
-    if (isAjax()) jsonResponse(['error' => 'Datenbankfehler'], 500);
+    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Datenbankfehler', 'data' => null], 500);
     setFlash('error', 'Fehler beim Aktualisieren des Zahlungsstatus.');
     redirect('/pages/kassierer_guestlist.php');
 }

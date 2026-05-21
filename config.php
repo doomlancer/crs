@@ -3,8 +3,34 @@
  * Konfigurationsdatei - Datenbank & Systemkonstanten
  */
 
-// Fehler nur in Entwicklung anzeigen; in Produktion auf false setzen
-define('DEBUG_MODE', false);
+// Composer-Autoloader
+if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+    require_once __DIR__ . '/vendor/autoload.php';
+}
+
+// .env laden
+if (class_exists('Dotenv\Dotenv') && file_exists(__DIR__ . '/.env')) {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->load();
+}
+
+// Fallback: direkte Werte wenn kein .env vorhanden (Abwärtskompatibilität)
+$_ENV['DB_HOST']         ??= 'localhost';
+$_ENV['DB_NAME']         ??= 'karneval_db';
+$_ENV['DB_USER']         ??= 'karneval_user';
+$_ENV['DB_PASS']         ??= '';
+$_ENV['DEBUG_MODE']      ??= 'false';
+$_ENV['APP_NAME']        ??= 'Karneval Reservierungssystem';
+$_ENV['APP_URL']         ??= 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+$_ENV['TICKET_PREIS']    ??= '15.00';
+$_ENV['SMTP_HOST']       ??= '';
+$_ENV['SMTP_PORT']       ??= '587';
+$_ENV['SMTP_USER']       ??= '';
+$_ENV['SMTP_PASS']       ??= '';
+$_ENV['SMTP_FROM_NAME']  ??= 'Karneval Reservierung';
+$_ENV['SMTP_ENCRYPTION'] ??= 'tls';
+
+define('DEBUG_MODE', filter_var($_ENV['DEBUG_MODE'], FILTER_VALIDATE_BOOLEAN));
 
 if (DEBUG_MODE) {
     error_reporting(E_ALL);
@@ -17,21 +43,21 @@ if (DEBUG_MODE) {
 }
 
 // Datenbank-Konfiguration
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'karneval_db');
-define('DB_USER', 'karneval_user');
-define('DB_PASS', 'StrongPassword123!');
+define('DB_HOST',    $_ENV['DB_HOST']);
+define('DB_NAME',    $_ENV['DB_NAME']);
+define('DB_USER',    $_ENV['DB_USER']);
+define('DB_PASS',    $_ENV['DB_PASS']);
 define('DB_CHARSET', 'utf8mb4');
 
 // Anwendungs-Einstellungen
-define('APP_NAME', 'Karneval Reservierungssystem');
-define('APP_URL', 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
-define('SESSION_TIMEOUT', 1800); // 30 Minuten in Sekunden
+define('APP_NAME',           $_ENV['APP_NAME']);
+define('APP_URL',            $_ENV['APP_URL']);
+define('SESSION_TIMEOUT',    1800);
 define('MAX_LOGIN_VERSUCHE', 5);
-define('LOGIN_SPERRZEIT', 900); // 15 Minuten in Sekunden
+define('LOGIN_SPERRZEIT',    900);
 
 // Ticket-Preis
-define('TICKET_PREIS', 15.00);
+define('TICKET_PREIS', (float)$_ENV['TICKET_PREIS']);
 
 // Upload-Verzeichnis
 define('UPLOAD_DIR', __DIR__ . '/uploads/');

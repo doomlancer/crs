@@ -1,5 +1,7 @@
 <?php
 $currentPage = basename($_SERVER['PHP_SELF']);
+$currentLang = getCurrentLang();
+$currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
 ?>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
     <div class="container">
@@ -110,15 +112,27 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                 <li class="nav-item">
                     <a class="nav-link <?= $currentPage === 'login.php' ? 'active' : '' ?>"
                        href="/pages/login.php">
-                        <i class="bi bi-box-arrow-in-right"></i> Anmelden
+                        <i class="bi bi-box-arrow-in-right"></i> <?= __('nav.login') ?>
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="btn btn-warning btn-sm ms-2" href="/pages/register.php">
-                        <i class="bi bi-person-plus"></i> Registrieren
+                        <i class="bi bi-person-plus"></i> <?= __('nav.register') ?>
                     </a>
                 </li>
                 <?php endif; ?>
+
+                <!-- Sprachumschalter -->
+                <li class="nav-item ms-2">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Sprache">
+                        <a href="/api/set_lang.php?lang=de&redirect=<?= urlencode($currentUrl) ?>"
+                           class="btn <?= $currentLang === 'de' ? 'btn-warning' : 'btn-outline-secondary' ?>"
+                           title="Deutsch">DE</a>
+                        <a href="/api/set_lang.php?lang=en&redirect=<?= urlencode($currentUrl) ?>"
+                           class="btn <?= $currentLang === 'en' ? 'btn-warning' : 'btn-outline-secondary' ?>"
+                           title="English">EN</a>
+                    </div>
+                </li>
             </ul>
         </div>
     </div>

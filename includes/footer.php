@@ -21,7 +21,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <?php if (file_exists(__DIR__ . '/../dist/js/main.js')): ?>
+    <script src="/dist/js/main.js"></script>
+    <?php else: ?>
     <script src="/js/main.js"></script>
+    <?php endif; ?>
     <?php if (!empty($extraScripts)) echo $extraScripts; ?>
 </body>
 </html>

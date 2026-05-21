@@ -6,6 +6,13 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 
+if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+}
+if (file_exists(__DIR__ . '/../includes/qrcode.php')) {
+    require_once __DIR__ . '/../includes/qrcode.php';
+}
+
 requireLogin();
 
 $pdo    = getDB();
@@ -28,6 +35,17 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute([$userId]);
 $reservierungen = $stmt->fetchAll();
+
+// Wartelisten-Einträge laden
+$stmtWl = $pdo->prepare(
+    'SELECT w.id, w.erstellt_am, e.id AS event_id, e.name AS event_name, e.datum AS event_datum
+     FROM waitlist w
+     JOIN events e ON w.event_id = e.id
+     WHERE w.user_id = ?
+     ORDER BY w.erstellt_am ASC'
+);
+$stmtWl->execute([$userId]);
+$warteliste = $stmtWl->fetchAll();
 
 // Statistiken
 $gesamt     = count($reservierungen);
@@ -125,6 +143,13 @@ include __DIR__ . '/../includes/navbar.php';
                             <tr>
                                 <td>
                                     <code class="fs-6 text-primary fw-bold"><?= htmlspecialchars($res['buchungsnummer']) ?></code>
+                                    <button class="btn btn-link btn-sm p-0 ms-2 text-muted"
+                                            type="button"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#qr-<?= $res['id'] ?>"
+                                            title="QR-Code anzeigen">
+                                        <i class="bi bi-qr-code"></i>
+                                    </button>
                                 </td>
                                 <td><?= htmlspecialchars($res['event_name']) ?></td>
                                 <td>
@@ -167,7 +192,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <?php endif; ?>
                                 </td>
                             </tr>
-                            <!-- Detail-Zeile mit Buchungsnummer zum Drucken -->
+                            <!-- Detail-Zeile mit QR-Code -->
                             <tr class="bg-light">
                                 <td colspan="9" class="py-1">
                                     <small class="text-muted">
@@ -182,6 +207,24 @@ include __DIR__ . '/../includes/navbar.php';
                                     </small>
                                 </td>
                             </tr>
+                            <tr class="collapse" id="qr-<?= $res['id'] ?>">
+                                <td colspan="9" class="bg-white text-center py-3">
+                                    <div class="d-inline-block text-center p-3 border rounded shadow-sm">
+                                        <?php if (function_exists('qrCodeImg')): ?>
+                                            <?= qrCodeImg($res['buchungsnummer'], 160, 'QR-Code ' . $res['buchungsnummer']) ?>
+                                        <?php else: ?>
+                                            <div class="text-muted small p-3">
+                                                <i class="bi bi-qr-code display-5 d-block mb-2"></i>
+                                                QR-Code verfügbar nach <code>composer install</code>
+                                            </div>
+                                        <?php endif; ?>
+                                        <div class="mt-2">
+                                            <code class="fs-6 fw-bold text-primary"><?= htmlspecialchars($res['buchungsnummer']) ?></code><br>
+                                            <small class="text-muted"><?= htmlspecialchars($res['event_name']) ?> · <?= formatDatum($res['event_datum']) ?></small>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -189,6 +232,49 @@ include __DIR__ . '/../includes/navbar.php';
             </div>
         </div>
 
+        <?php endif; ?>
+
+        <?php if (!empty($warteliste)): ?>
+        <!-- Warteliste -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header bg-info text-white fw-bold">
+                <i class="bi bi-hourglass-split me-2"></i>Meine Wartelisten-Einträge
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Veranstaltung</th>
+                                <th>Datum</th>
+                                <th>Eingetragen am</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($warteliste as $wl): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($wl['event_name']) ?></td>
+                                <td><span class="badge bg-warning text-dark"><?= formatDatum($wl['event_datum']) ?></span></td>
+                                <td><small class="text-muted"><?= date('d.m.Y H:i', strtotime($wl['erstellt_am'])) ?> Uhr</small></td>
+                                <td>
+                                    <form method="POST" action="/api/join_waitlist.php"
+                                          onsubmit="return confirm('Von der Warteliste entfernen?')">
+                                        <?= csrfField() ?>
+                                        <input type="hidden" name="action" value="leave">
+                                        <input type="hidden" name="event_id" value="<?= $wl['event_id'] ?>">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-x-circle me-1"></i>Entfernen
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
         <?php endif; ?>
 
         <!-- Quick Actions -->

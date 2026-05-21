@@ -6,6 +6,51 @@
 require_once __DIR__ . '/config.php';
 
 // =====================
+// Internationalisierung (i18n)
+// =====================
+
+/**
+ * Aktuelle Sprache ermitteln (Session > Browser > Fallback 'de')
+ */
+function getCurrentLang(): string {
+    $allowed = ['de', 'en'];
+    if (!empty($_SESSION['lang']) && in_array($_SESSION['lang'], $allowed, true)) {
+        return $_SESSION['lang'];
+    }
+    // Browser-Sprache als Hint
+    $acceptLang = $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'de';
+    return str_starts_with(strtolower($acceptLang), 'en') ? 'en' : 'de';
+}
+
+/**
+ * Sprache in Session setzen
+ */
+function setLang(string $lang): void {
+    $allowed = ['de', 'en'];
+    if (in_array($lang, $allowed, true)) {
+        $_SESSION['lang'] = $lang;
+    }
+}
+
+/**
+ * Übersetzung abrufen
+ * Unterstützt printf-Platzhalter: __('key', 'Wert')
+ */
+function __(string $key, string ...$args): string {
+    static $translations = null;
+    if ($translations === null) {
+        $lang = getCurrentLang();
+        $file = __DIR__ . "/lang/{$lang}.php";
+        if (!file_exists($file)) {
+            $file = __DIR__ . '/lang/de.php';
+        }
+        $translations = file_exists($file) ? require $file : [];
+    }
+    $text = $translations[$key] ?? $key;
+    return empty($args) ? $text : vsprintf($text, $args);
+}
+
+// =====================
 // Sicherheits-Funktionen
 // =====================
 
@@ -308,4 +353,57 @@ function jsonResponse(array $data, int $statusCode = 200): void {
 function isAjax(): bool {
     return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
            strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+}
+
+// =====================
+// E-Mail-Hilfsfunktionen (Wrapper – Implementierung in includes/mailer.php)
+// =====================
+
+/**
+ * Passwort-Reset-E-Mail senden
+ */
+function sendPasswordResetEmail(string $email, string $vorname, string $resetUrl): bool {
+    if (file_exists(__DIR__ . '/includes/mailer.php')) {
+        require_once __DIR__ . '/includes/mailer.php';
+        return mailPasswordReset($email, $vorname, $resetUrl);
+    }
+    // Fallback: PHP mail() wenn kein PHPMailer vorhanden
+    $subject = htmlspecialchars(APP_NAME) . ' – Passwort zurücksetzen';
+    $body    = "Hallo {$vorname},\n\nbitte klicken Sie auf folgenden Link, um Ihr Passwort zurückzusetzen:\n{$resetUrl}\n\nDer Link ist 1 Stunde gültig.\n\nWenn Sie keinen Reset angefordert haben, ignorieren Sie diese E-Mail.";
+    return mail($email, $subject, $body, 'From: ' . ($_ENV['SMTP_USER'] ?? 'noreply@localhost'));
+}
+
+/**
+ * Reservierungsbestätigung senden
+ */
+function sendReservierungsbestaetigung(string $email, string $vorname, array $buchungen, string $eventName, string $eventDatum): bool {
+    if (file_exists(__DIR__ . '/includes/mailer.php')) {
+        require_once __DIR__ . '/includes/mailer.php';
+        return mailReservierungsbestaetigung($email, $vorname, $buchungen, $eventName, $eventDatum);
+    }
+    return false;
+}
+
+/**
+ * Stornierungsbestätigung senden
+ */
+function sendStornierungsbestaetigung(string $email, string $vorname, string $buchungsnummer, string $eventName): bool {
+    if (file_exists(__DIR__ . '/includes/mailer.php')) {
+        require_once __DIR__ . '/includes/mailer.php';
+        return mailStornierungsbestaetigung($email, $vorname, $buchungsnummer, $eventName);
+    }
+    return false;
+}
+
+/**
+ * Wartelisten-Benachrichtigung senden (Platz frei geworden)
+ */
+function sendWaitlistNotification(string $email, string $vorname, string $eventName, string $tischUrl): bool {
+    if (file_exists(__DIR__ . '/includes/mailer.php')) {
+        require_once __DIR__ . '/includes/mailer.php';
+        return mailWaitlistNotification($email, $vorname, $eventName, $tischUrl);
+    }
+    $subject = htmlspecialchars(APP_NAME) . ' – Ein Platz ist frei geworden!';
+    $body    = "Hallo {$vorname},\n\nein Platz für das Event \"{$eventName}\" ist frei geworden!\nBitte reservieren Sie jetzt: {$tischUrl}\n\nViele Grüße\nIhr " . APP_NAME;
+    return mail($email, $subject, $body, 'From: ' . ($_ENV['SMTP_USER'] ?? 'noreply@localhost'));
 }

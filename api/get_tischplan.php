@@ -11,12 +11,12 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 
 if (!isLoggedIn()) {
-    jsonResponse(['error' => 'Nicht autorisiert'], 401);
+    jsonResponse(['success' => false, 'message' => 'Nicht autorisiert', 'data' => null], 401);
 }
 
 $eventId = (int)($_GET['event_id'] ?? 0);
 if (!$eventId) {
-    jsonResponse(['error' => 'Kein Event angegeben'], 400);
+    jsonResponse(['success' => false, 'message' => 'Kein Event angegeben', 'data' => null], 400);
 }
 
 try {
@@ -29,7 +29,7 @@ try {
     $event = $stmtEvent->fetch();
 
     if (!$event) {
-        jsonResponse(['error' => 'Event nicht gefunden'], 404);
+        jsonResponse(['success' => false, 'message' => 'Event nicht gefunden', 'data' => null], 404);
     }
 
     // Tische und Sitze laden
@@ -79,19 +79,23 @@ try {
     $belegt   = count(array_filter($allSitze, fn($r) => $r['seat_id'] && $r['seat_status'] !== 'verfuegbar'));
 
     jsonResponse([
-        'event'    => $event,
-        'tische'   => array_values($tische),
-        'statistik' => [
-            'gesamt'  => $gesamt,
-            'belegt'  => $belegt,
-            'frei'    => $gesamt - $belegt,
-            'prozent' => $gesamt > 0 ? round($belegt / $gesamt * 100) : 0,
+        'success' => true,
+        'message' => '',
+        'data'    => [
+            'event'    => $event,
+            'tische'   => array_values($tische),
+            'statistik' => [
+                'gesamt'  => $gesamt,
+                'belegt'  => $belegt,
+                'frei'    => $gesamt - $belegt,
+                'prozent' => $gesamt > 0 ? round($belegt / $gesamt * 100) : 0,
+            ],
+            'meine_sitze' => $meineSitze,
+            'timestamp'   => time(),
         ],
-        'meine_sitze' => $meineSitze,
-        'timestamp'   => time(),
     ]);
 
 } catch (PDOException $e) {
     error_log('get_tischplan Fehler: ' . $e->getMessage());
-    jsonResponse(['error' => 'Datenbankfehler'], 500);
+    jsonResponse(['success' => false, 'message' => 'Datenbankfehler', 'data' => null], 500);
 }

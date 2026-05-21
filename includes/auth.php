@@ -142,6 +142,12 @@ function registerUser(array $data): true|array {
     $userId = (int)$pdo->lastInsertId();
     logAudit('REGISTRIERUNG', 'users', $userId, "Neuer Benutzer: {$email}");
 
+    // Willkommens-E-Mail
+    if (file_exists(__DIR__ . '/../includes/mailer.php')) {
+        require_once __DIR__ . '/../includes/mailer.php';
+        mailRegistrierungsbestaetigung($email, $vorname);
+    }
+
     return true;
 }
 
