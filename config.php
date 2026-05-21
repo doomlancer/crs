@@ -12,7 +12,7 @@ if (file_exists($envFile)) {
         if ($line === '' || $line[0] === '#' || !str_contains($line, '=')) continue;
         [$key, $val] = explode('=', $line, 2);
         $key = trim($key);
-        $val = trim($val, " \t\"'");
+        $val = trim($val, " \t\r\n\"'");
         if (!isset($_ENV[$key])) {
             $_ENV[$key] = $val;
         }
