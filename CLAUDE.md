@@ -8,12 +8,14 @@ CRS (Card Reservating System) is a German-language web application for managing 
 
 ## Setup
 
-### PHP / Apache
-1. Copy `.env.example` to `.env` and fill in `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, and SMTP settings.
-2. Run `composer install` to install PHP dependencies (phpdotenv, PHPMailer, endroid/qr-code).
-3. Run migrations: `php migrate.php`
-4. Deploy to Apache with PHP 7.4+. The `.htaccess` at the root configures routing, security headers, and CSP.
-5. Ensure `uploads/` and `logs/` are writable by the web server.
+**Keine externen Abhängigkeiten nötig — kein Composer, kein SSH, kein CLI.**
+
+1. `.env.example` → `.env` kopieren und DB-Credentials + SMTP eintragen.
+2. `setup_plesk.sql` in phpMyAdmin importieren (einmalig).
+3. Dateien per FTP hochladen.
+4. Im Browser als Admin aufrufen: `/migrate_web.php` → Migrationen ausführen.
+5. `migrate_web.php` danach per Dateimanager löschen.
+6. `uploads/` und `logs/` müssen serverseitig beschreibbar sein (chmod 755/750).
 
 ### Frontend (optional, for minified assets)
 ```

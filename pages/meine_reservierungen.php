@@ -6,12 +6,7 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 
-if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
-}
-if (file_exists(__DIR__ . '/../includes/qrcode.php')) {
-    require_once __DIR__ . '/../includes/qrcode.php';
-}
+require_once __DIR__ . '/../includes/qrcode.php';
 
 requireLogin();
 
@@ -210,14 +205,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <tr class="collapse" id="qr-<?= $res['id'] ?>">
                                 <td colspan="9" class="bg-white text-center py-3">
                                     <div class="d-inline-block text-center p-3 border rounded shadow-sm">
-                                        <?php if (function_exists('qrCodeImg')): ?>
-                                            <?= qrCodeImg($res['buchungsnummer'], 160, 'QR-Code ' . $res['buchungsnummer']) ?>
-                                        <?php else: ?>
-                                            <div class="text-muted small p-3">
-                                                <i class="bi bi-qr-code display-5 d-block mb-2"></i>
-                                                QR-Code verfügbar nach <code>composer install</code>
-                                            </div>
-                                        <?php endif; ?>
+                                        <?= qrCodeImg($res['buchungsnummer'], 160, 'QR-Code ' . $res['buchungsnummer']) ?>
                                         <div class="mt-2">
                                             <code class="fs-6 fw-bold text-primary"><?= htmlspecialchars($res['buchungsnummer']) ?></code><br>
                                             <small class="text-muted"><?= htmlspecialchars($res['event_name']) ?> · <?= formatDatum($res['event_datum']) ?></small>
@@ -298,4 +286,38 @@ include __DIR__ . '/../includes/navbar.php';
     </div>
 </main>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php
+$extraScripts = <<<'HTML'
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // QR-Codes beim Aufklappen rendern
+    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var target = document.querySelector(this.dataset.bsTarget);
+            if (!target) return;
+            target.addEventListener('shown.bs.collapse', function() {
+                renderQrCodes(target);
+            }, { once: true });
+        });
+    });
+});
+
+function renderQrCodes(container) {
+    container.querySelectorAll('.qr-placeholder').forEach(function(div) {
+        if (div.querySelector('canvas')) return; // bereits gerendert
+        var content = div.dataset.content;
+        var size    = parseInt(div.dataset.size) || 160;
+        var canvas  = document.createElement('canvas');
+        div.appendChild(canvas);
+        QRCode.toCanvas(canvas, content, { width: size, margin: 2 }, function(err) {
+            if (err) {
+                div.innerHTML = '<small class="text-muted">' + content + '</small>';
+            }
+        });
+    });
+}
+</script>
+HTML;
+include __DIR__ . '/../includes/footer.php';
+?>
