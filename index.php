@@ -41,7 +41,10 @@ include __DIR__ . '/includes/navbar.php';
             <div class="container text-center py-5">
                 <div class="hero-content">
                     <div class="mb-3">
-                        <i class="bi bi-music-note-beamed display-1 text-warning"></i>
+                        <img src="https://image.jimcdn.com/app/cms/image/transf/dimension=115x1024:format=jpg/path/s4cea4c34b6ccc3a8/image/icfeaef9396ebbdc4/version/1568056565/image.jpg"
+                             alt="F.C.G. Die Kameruner"
+                             style="width:100px;height:100px;object-fit:contain;border-radius:50%;border:3px solid #cf2e2e;background:#fff;"
+                             onerror="this.outerHTML='<i class=\'bi bi-people-fill display-1\' style=\'color:#cf2e2e\'></i>'">
                     </div>
                     <h1 class="display-4 fw-bold text-white mb-3">
                         Kameruner<span class="text-warning">-Tickets</span>

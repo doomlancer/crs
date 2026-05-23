@@ -5,9 +5,12 @@ $currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
 ?>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
     <div class="container">
-        <a class="navbar-brand fw-bold" href="/index.php">
-            <i class="bi bi-music-note-beamed text-warning"></i>
-            <span class="text-warning">Kameruner</span>-Tickets
+        <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="/index.php">
+            <img src="https://image.jimcdn.com/app/cms/image/transf/dimension=115x1024:format=jpg/path/s4cea4c34b6ccc3a8/image/icfeaef9396ebbdc4/version/1568056565/image.jpg"
+                 alt="F.C.G. Die Kameruner"
+                 class="club-logo"
+                 onerror="this.style.display='none'">
+            <span><span style="color:#cf2e2e;">Kameruner</span>-Tickets</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
             <span class="navbar-toggler-icon"></span>

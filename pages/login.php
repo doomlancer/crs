@@ -66,7 +66,9 @@ include __DIR__ . '/../includes/header.php';
             <!-- Logo / App-Name -->
             <div class="text-center mb-4">
                 <a href="/index.php" class="text-decoration-none">
-                    <i class="bi bi-music-note-beamed display-4 text-warning"></i>
+                    <img src="https://image.jimcdn.com/app/cms/image/transf/dimension=115x1024:format=jpg/path/s4cea4c34b6ccc3a8/image/icfeaef9396ebbdc4/version/1568056565/image.jpg"
+                         alt="F.C.G. Die Kameruner" class="auth-logo"
+                         onerror="this.style.display='none'">
                     <h1 class="h4 text-white fw-bold mt-2"><?= htmlspecialchars(APP_NAME) ?></h1>
                 </a>
             </div>
