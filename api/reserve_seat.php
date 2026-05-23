@@ -34,20 +34,38 @@ if ($action === 'cancel') {
     try {
         $pdo->beginTransaction();
 
+        $isAdmin = hasRole('admin');
+
         if ($reservationId) {
             // Über Reservation-ID stornieren
-            $stmt = $pdo->prepare(
-                'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
-                 WHERE r.id = ? AND r.user_id = ? AND r.status = "geplant"'
-            );
-            $stmt->execute([$reservationId, $userId]);
+            if ($isAdmin) {
+                $stmt = $pdo->prepare(
+                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                     WHERE r.id = ? AND r.status = "geplant"'
+                );
+                $stmt->execute([$reservationId]);
+            } else {
+                $stmt = $pdo->prepare(
+                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                     WHERE r.id = ? AND r.user_id = ? AND r.status = "geplant"'
+                );
+                $stmt->execute([$reservationId, $userId]);
+            }
         } else {
             // Über Seat-ID stornieren
-            $stmt = $pdo->prepare(
-                'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
-                 WHERE r.seat_id = ? AND r.user_id = ? AND r.status = "geplant"'
-            );
-            $stmt->execute([$seatId, $userId]);
+            if ($isAdmin) {
+                $stmt = $pdo->prepare(
+                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                     WHERE r.seat_id = ? AND r.status = "geplant"'
+                );
+                $stmt->execute([$seatId]);
+            } else {
+                $stmt = $pdo->prepare(
+                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                     WHERE r.seat_id = ? AND r.user_id = ? AND r.status = "geplant"'
+                );
+                $stmt->execute([$seatId, $userId]);
+            }
         }
 
         $reservation = $stmt->fetch();

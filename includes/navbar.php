@@ -69,6 +69,9 @@ $currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
                         <li><a class="dropdown-item" href="/pages/admin_events.php">
                             <i class="bi bi-calendar-plus"></i> Event-Management
                         </a></li>
+                        <li><a class="dropdown-item" href="/pages/admin_reservierungen.php">
+                            <i class="bi bi-ticket-perforated-fill"></i> Reservierungen
+                        </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_users.php">
                             <i class="bi bi-people-fill"></i> Benutzer
                         </a></li>
