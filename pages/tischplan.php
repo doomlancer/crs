@@ -27,10 +27,10 @@ if (!$eventId && !empty($events)) {
     $eventId = (int)$events[0]['id'];
 }
 
-// Aktuelles Event laden
+// Aktuelles Event laden (inkl. Tischplan-Bild)
 $selectedEvent = null;
 if ($eventId) {
-    $stmt = $pdo->prepare('SELECT * FROM events WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, datum, name, beschreibung, status, tischplan_bild FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
     $selectedEvent = $stmt->fetch();
 }
@@ -43,6 +43,16 @@ if ($eventId) {
     );
     $stmt->execute([$userId, $eventId]);
     $meineReservierungen = array_column($stmt->fetchAll(), 'seat_id');
+}
+
+// Visueller Modus: Bild + Positionen vorhanden?
+$visualMode = false;
+if ($selectedEvent && !empty($selectedEvent['tischplan_bild'])) {
+    $stmtCheck = $pdo->prepare(
+        'SELECT COUNT(*) FROM `tables` WHERE event_id = ? AND pos_x IS NOT NULL'
+    );
+    $stmtCheck->execute([$eventId]);
+    $visualMode = $stmtCheck->fetchColumn() > 0;
 }
 
 $pageTitle = 'Tischplan';
@@ -170,45 +180,97 @@ include __DIR__ . '/../includes/navbar.php';
                     </span>
                 </div>
 
-                <!-- Grafischer Tischplan -->
-                <div class="tischplan-container" id="tischplan">
-                    <?php
-                    // Alle Tische mit Sitzen laden
-                    $stmtTische = $pdo->prepare(
-                        'SELECT t.id AS table_id, t.tischnummer, t.max_plaetze FROM tables t WHERE t.event_id = ? ORDER BY t.tischnummer'
-                    );
-                    $stmtTische->execute([$eventId]);
-                    $tische = $stmtTische->fetchAll();
+                <?php
+                // Alle Tische + Sitze laden (für beide Modi)
+                $stmtTische = $pdo->prepare(
+                    'SELECT t.id AS table_id, t.tischnummer, t.max_plaetze, t.pos_x, t.pos_y
+                     FROM `tables` t WHERE t.event_id = ? ORDER BY t.tischnummer'
+                );
+                $stmtTische->execute([$eventId]);
+                $tische = $stmtTische->fetchAll();
 
-                    if (empty($tische)): ?>
+                $stmtSitze = $pdo->prepare(
+                    'SELECT s.id, s.table_id, s.sitzplatznummer, s.status
+                     FROM seats s
+                     INNER JOIN `tables` t ON s.table_id = t.id
+                     WHERE t.event_id = ?
+                     ORDER BY t.tischnummer, s.sitzplatznummer'
+                );
+                $stmtSitze->execute([$eventId]);
+                $alleSitze = $stmtSitze->fetchAll();
+
+                $sitzePorTisch = [];
+                foreach ($alleSitze as $sitz) {
+                    $sitzePorTisch[$sitz['table_id']][] = $sitz;
+                }
+                ?>
+
+                <?php if (empty($tische)): ?>
+                <div class="tischplan-container">
                     <div class="text-center py-5 text-muted">
                         <i class="bi bi-exclamation-triangle display-4 d-block mb-3"></i>
                         <p>Für dieses Event wurden noch keine Tische konfiguriert.</p>
                         <?php if (hasRole('admin')): ?>
-                        <a href="/pages/admin_events.php" class="btn btn-warning">Tische konfigurieren</a>
+                        <a href="/pages/admin_events.php?action=tables&event_id=<?= $eventId ?>" class="btn btn-warning">Tische konfigurieren</a>
                         <?php endif; ?>
                     </div>
-                    <?php else:
-                        // Alle Sitze für dieses Event laden
-                        $stmtSitze = $pdo->prepare(
-                            'SELECT s.id, s.table_id, s.sitzplatznummer, s.status
-                             FROM seats s
-                             INNER JOIN tables t ON s.table_id = t.id
-                             WHERE t.event_id = ?
-                             ORDER BY t.tischnummer, s.sitzplatznummer'
-                        );
-                        $stmtSitze->execute([$eventId]);
-                        $alleSitze = $stmtSitze->fetchAll();
+                </div>
 
-                        // Sitze nach table_id gruppieren
-                        $sitzePorTisch = [];
-                        foreach ($alleSitze as $sitz) {
-                            $sitzePorTisch[$sitz['table_id']][] = $sitz;
-                        }
+                <?php elseif ($visualMode): ?>
+                <!-- ══ VISUELLER MODUS: Bild mit positionierten Tischen ══ -->
+                <div style="position:relative; display:inline-block; max-width:100%; width:100%;" id="tischplan">
+                    <img src="/api/tischplan_image.php?event_id=<?= $eventId ?>"
+                         alt="Tischplan" id="tischplanImg"
+                         style="display:block; max-width:100%; height:auto; border-radius:8px;">
+                    <?php foreach ($tische as $tisch):
+                        if ($tisch['pos_x'] === null) continue;
+                        $sitzeListe = $sitzePorTisch[$tisch['table_id']] ?? [];
+                    ?>
+                    <div class="visual-tisch-block"
+                         style="position:absolute;
+                                left:<?= $tisch['pos_x'] ?>%;
+                                top:<?= $tisch['pos_y'] ?>%;
+                                transform:translate(-50%,-50%);
+                                z-index:10;">
+                        <div class="tisch-label" style="color:#fff; background:rgba(0,0,0,0.55); border-radius:4px 4px 0 0; padding:2px 6px; font-size:0.65rem; text-align:center; font-weight:700;">
+                            T<?= $tisch['tischnummer'] ?>
+                        </div>
+                        <div class="seats-grid" style="background:rgba(22,33,62,0.8); border-radius:0 0 6px 6px; padding:4px;">
+                            <?php foreach ($sitzeListe as $sitz):
+                                $meinsFlag   = in_array($sitz['id'], $meineReservierungen);
+                                $statusClass = $meinsFlag ? 'mein-platz' : $sitz['status'];
+                                $clickable   = ($statusClass === 'verfuegbar' || $statusClass === 'mein-platz');
+                                $title       = "Tisch {$tisch['tischnummer']}, Platz {$sitz['sitzplatznummer']}";
+                                if ($statusClass === 'mein-platz')       $title .= ' (Meine Reservierung)';
+                                elseif ($sitz['status'] === 'reserviert') $title .= ' (Reserviert)';
+                                elseif ($sitz['status'] === 'besetzt')    $title .= ' (Besetzt)';
+                            ?>
+                            <button class="seat-btn <?= $statusClass ?>"
+                                    data-seat-id="<?= $sitz['id'] ?>"
+                                    data-table-id="<?= $tisch['table_id'] ?>"
+                                    data-tischnummer="<?= $tisch['tischnummer'] ?>"
+                                    data-sitzplatznummer="<?= $sitz['sitzplatznummer'] ?>"
+                                    data-status="<?= $sitz['status'] ?>"
+                                    data-mein-platz="<?= $meinsFlag ? '1' : '0' ?>"
+                                    <?= !$clickable ? 'disabled' : '' ?>
+                                    title="<?= htmlspecialchars($title) ?>"
+                                    onclick="<?= $clickable ? 'toggleSeat(this)' : '' ?>"
+                                    type="button"
+                                    style="width:28px;height:28px;font-size:0.6rem;">
+                                <?= $sitz['sitzplatznummer'] ?>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
 
-                        // Tische in Gruppen zu je 4 aufteilen für Layout
-                        $tischChunks = array_chunk($tische, 4);
-                        foreach ($tischChunks as $tischRow):
+                <?php else: ?>
+                <!-- ══ GRID-MODUS: Klassische Rasteransicht ══ -->
+                <div class="tischplan-container" id="tischplan">
+                    <?php
+                    $tischChunks = array_chunk($tische, 4);
+                    foreach ($tischChunks as $tischRow):
                     ?>
                     <div class="table-row">
                         <?php foreach ($tischRow as $tisch):
@@ -221,26 +283,25 @@ include __DIR__ . '/../includes/navbar.php';
                             </div>
                             <div class="seats-grid">
                                 <?php foreach ($sitzeListe as $sitz):
-                                    $meinsFlag = in_array($sitz['id'], $meineReservierungen);
+                                    $meinsFlag   = in_array($sitz['id'], $meineReservierungen);
                                     $statusClass = $meinsFlag ? 'mein-platz' : $sitz['status'];
-                                    $clickable = ($statusClass === 'verfuegbar' || $statusClass === 'mein-platz');
-                                    $title = "Tisch {$tisch['tischnummer']}, Platz {$sitz['sitzplatznummer']}";
-                                    if ($statusClass === 'mein-platz') $title .= ' (Meine Reservierung)';
+                                    $clickable   = ($statusClass === 'verfuegbar' || $statusClass === 'mein-platz');
+                                    $title       = "Tisch {$tisch['tischnummer']}, Platz {$sitz['sitzplatznummer']}";
+                                    if ($statusClass === 'mein-platz')       $title .= ' (Meine Reservierung)';
                                     elseif ($sitz['status'] === 'reserviert') $title .= ' (Reserviert)';
-                                    elseif ($sitz['status'] === 'besetzt') $title .= ' (Besetzt)';
+                                    elseif ($sitz['status'] === 'besetzt')    $title .= ' (Besetzt)';
                                 ?>
-                                <button
-                                    class="seat-btn <?= $statusClass ?>"
-                                    data-seat-id="<?= $sitz['id'] ?>"
-                                    data-table-id="<?= $tisch['table_id'] ?>"
-                                    data-tischnummer="<?= $tisch['tischnummer'] ?>"
-                                    data-sitzplatznummer="<?= $sitz['sitzplatznummer'] ?>"
-                                    data-status="<?= $sitz['status'] ?>"
-                                    data-mein-platz="<?= $meinsFlag ? '1' : '0' ?>"
-                                    <?= !$clickable ? 'disabled' : '' ?>
-                                    title="<?= htmlspecialchars($title) ?>"
-                                    onclick="<?= $clickable ? 'toggleSeat(this)' : '' ?>"
-                                    type="button">
+                                <button class="seat-btn <?= $statusClass ?>"
+                                        data-seat-id="<?= $sitz['id'] ?>"
+                                        data-table-id="<?= $tisch['table_id'] ?>"
+                                        data-tischnummer="<?= $tisch['tischnummer'] ?>"
+                                        data-sitzplatznummer="<?= $sitz['sitzplatznummer'] ?>"
+                                        data-status="<?= $sitz['status'] ?>"
+                                        data-mein-platz="<?= $meinsFlag ? '1' : '0' ?>"
+                                        <?= !$clickable ? 'disabled' : '' ?>
+                                        title="<?= htmlspecialchars($title) ?>"
+                                        onclick="<?= $clickable ? 'toggleSeat(this)' : '' ?>"
+                                        type="button">
                                     <?= $sitz['sitzplatznummer'] ?>
                                 </button>
                                 <?php endforeach; ?>
@@ -248,9 +309,9 @@ include __DIR__ . '/../includes/navbar.php';
                         </div>
                         <?php endforeach; ?>
                     </div>
-                    <?php endforeach;
-                    endif; ?>
+                    <?php endforeach; ?>
                 </div>
+                <?php endif; ?>
 
                 <!-- Bühne / Dekoration -->
                 <div class="text-center mt-3">
