@@ -13,7 +13,7 @@ require_once __DIR__ . '/../functions.php';
  * Benutzer einloggen
  * Gibt true bei Erfolg zurück, sonst Fehlermeldung
  */
-function loginUser(string $email, string $passwort): true|string {
+function loginUser(string $email, string $passwort): bool|string {
     $pdo = getDB();
 
     // Benutzer anhand der E-Mail suchen
@@ -93,7 +93,7 @@ function logoutUser(): void {
  * Neuen Benutzer registrieren
  * Gibt true bei Erfolg, sonst Fehlermeldung-Array
  */
-function registerUser(array $data): true|array {
+function registerUser(array $data): bool|array {
     $errors = [];
 
     $vorname     = trim($data['vorname'] ?? '');
