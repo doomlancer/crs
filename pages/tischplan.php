@@ -27,12 +27,20 @@ if (!$eventId && !empty($events)) {
     $eventId = (int)$events[0]['id'];
 }
 
-// Aktuelles Event laden (inkl. Tischplan-Bild)
+// Aktuelles Event laden (tischplan_bild nur wenn Spalte vorhanden)
 $selectedEvent = null;
 if ($eventId) {
-    $stmt = $pdo->prepare('SELECT id, datum, name, beschreibung, status, tischplan_bild FROM events WHERE id = ?');
-    $stmt->execute([$eventId]);
-    $selectedEvent = $stmt->fetch();
+    try {
+        $stmt = $pdo->prepare('SELECT id, datum, name, beschreibung, status, tischplan_bild FROM events WHERE id = ?');
+        $stmt->execute([$eventId]);
+        $selectedEvent = $stmt->fetch();
+    } catch (PDOException $e) {
+        // Spalte tischplan_bild existiert noch nicht (Migration ausstehend)
+        $stmt = $pdo->prepare('SELECT id, datum, name, beschreibung, status FROM events WHERE id = ?');
+        $stmt->execute([$eventId]);
+        $selectedEvent = $stmt->fetch();
+        if ($selectedEvent) $selectedEvent['tischplan_bild'] = null;
+    }
 }
 
 // Bereits reservierte Sitze des Benutzers für dieses Event
@@ -48,11 +56,15 @@ if ($eventId) {
 // Visueller Modus: Bild + Positionen vorhanden?
 $visualMode = false;
 if ($selectedEvent && !empty($selectedEvent['tischplan_bild'])) {
-    $stmtCheck = $pdo->prepare(
-        'SELECT COUNT(*) FROM `tables` WHERE event_id = ? AND pos_x IS NOT NULL'
-    );
-    $stmtCheck->execute([$eventId]);
-    $visualMode = $stmtCheck->fetchColumn() > 0;
+    try {
+        $stmtCheck = $pdo->prepare(
+            'SELECT COUNT(*) FROM `tables` WHERE event_id = ? AND pos_x IS NOT NULL'
+        );
+        $stmtCheck->execute([$eventId]);
+        $visualMode = $stmtCheck->fetchColumn() > 0;
+    } catch (PDOException $e) {
+        $visualMode = false; // Migration noch nicht eingespielt
+    }
 }
 
 $pageTitle = 'Tischplan';

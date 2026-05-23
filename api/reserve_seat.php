@@ -158,12 +158,16 @@ if (empty($seatIds) || count($seatIds) > 10) {
 try {
     $pdo->beginTransaction();
 
-    // Event prüfen (existiert, ist aktiv)
-    $stmtEvent = $pdo->prepare("SELECT id, status FROM events WHERE id = ? AND status = 'aktiv'");
+    // Event prüfen (Admins dürfen auf allen nicht-abgerechneten Events reservieren)
+    if (hasRole('admin')) {
+        $stmtEvent = $pdo->prepare("SELECT id, status FROM events WHERE id = ? AND status != 'abgerechnet'");
+    } else {
+        $stmtEvent = $pdo->prepare("SELECT id, status FROM events WHERE id = ? AND status = 'aktiv'");
+    }
     $stmtEvent->execute([$eventId]);
     if (!$stmtEvent->fetch()) {
         $pdo->rollBack();
-        setFlash('error', 'Dieses Event ist nicht mehr verfügbar.');
+        setFlash('error', 'Dieses Event ist nicht verfügbar.');
         redirect('/pages/events.php');
     }
 
