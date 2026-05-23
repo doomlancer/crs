@@ -5,8 +5,8 @@ SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
 
 -- Datenbank erstellen (falls nicht vorhanden)
-CREATE DATABASE IF NOT EXISTS `karneval_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `karneval_db`;
+CREATE DATABASE IF NOT EXISTS `crs` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `crs`;
 
 -- =====================
 -- Tabelle: users
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
 -- bcrypt hash für 'Admin1234!'
 -- =====================
 INSERT INTO `users` (`vorname`, `nachname`, `email`, `passwort`, `zahlungsart`, `rolle`, `aktiv`) VALUES
-('System', 'Administrator', 'admin@karneval.local', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'bar', 'admin', 1);
+('System', 'Administrator', 'admin@kameruner-tickets.de', '$2y$10$MLK6ddU2J9.YS.vgq.no7.crWbuBRwUZaTuf5JjQDS65yZmOjKnNy', 'bar', 'admin', 1);
 
 -- Beispiel-Event
 INSERT INTO `events` (`datum`, `name`, `beschreibung`, `max_gaeste`, `status`) VALUES

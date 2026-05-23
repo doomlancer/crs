@@ -4,8 +4,8 @@
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
 
-CREATE DATABASE IF NOT EXISTS `karneval_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `karneval_db`;
+CREATE DATABASE IF NOT EXISTS `crs` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `crs`;
 
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT NOT NULL AUTO_INCREMENT,
