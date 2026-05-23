@@ -48,7 +48,7 @@ include __DIR__ . '/../includes/navbar.php';
                     <i class="bi bi-calendar-event text-warning me-2"></i>Veranstaltungen
                 </h1>
                 <p class="text-muted mb-0">
-                    Alle verfügbaren Karnevalsveranstaltungen auf einen Blick.
+                    Alle verfügbaren Veranstaltungen auf einen Blick.
                     <?php if (!isLoggedIn()): ?>
                         <a href="/pages/register.php" class="text-warning fw-semibold">Registrieren Sie sich</a>,
                         um Plätze zu reservieren.

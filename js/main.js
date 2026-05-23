@@ -1,5 +1,5 @@
 /**
- * Karneval Reservierungssystem – Client-seitige Logik
+ * Kameruner-Tickets – Client-seitige Logik
  */
 
 'use strict';

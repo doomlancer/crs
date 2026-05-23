@@ -44,10 +44,10 @@ include __DIR__ . '/includes/navbar.php';
                         <i class="bi bi-music-note-beamed display-1 text-warning"></i>
                     </div>
                     <h1 class="display-4 fw-bold text-white mb-3">
-                        Karneval <span class="text-warning">2026</span>
+                        Kameruner<span class="text-warning">-Tickets</span>
                     </h1>
                     <p class="lead text-white-50 mb-4">
-                        Sichern Sie sich Ihren Platz bei den unvergesslichen Karnevalsveranstaltungen!<br>
+                        Sichern Sie sich Ihren Platz bei den unvergesslichen Veranstaltungen!<br>
                         Einfach online reservieren, bequem bezahlen und den Spaß genießen.
                     </p>
                     <div class="d-flex gap-3 justify-content-center flex-wrap">
@@ -170,7 +170,7 @@ include __DIR__ . '/includes/navbar.php';
         <div class="container text-center">
             <h3 class="fw-bold mb-3">
                 <i class="bi bi-emoji-laughing text-warning me-2"></i>
-                Bereit für den Karneval?
+                Bereit für Kameruner-Tickets?
             </h3>
             <p class="text-muted mb-4">Melden Sie sich an und reservieren Sie Ihren Platz noch heute!</p>
             <?php if (!isLoggedIn()): ?>

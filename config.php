@@ -25,11 +25,11 @@ $_ENV['DB_NAME']         ??= 'crs';
 $_ENV['DB_USER']         ??= 'root';
 $_ENV['DB_PASS']         ??= '';
 $_ENV['DEBUG_MODE']      ??= 'false';
-$_ENV['APP_NAME']        ??= 'Karneval Reservierungssystem';
+$_ENV['APP_NAME']        ??= 'Kameruner-Tickets';
 $_ENV['APP_URL']         ??= 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
 $_ENV['TICKET_PREIS']    ??= '15.00';
 $_ENV['SMTP_USER']       ??= '';
-$_ENV['SMTP_FROM_NAME']  ??= 'Karneval Reservierung';
+$_ENV['SMTP_FROM_NAME']  ??= 'Kameruner-Tickets';
 
 define('DEBUG_MODE', filter_var($_ENV['DEBUG_MODE'], FILTER_VALIDATE_BOOLEAN));
 

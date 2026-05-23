@@ -7,7 +7,7 @@ $currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
     <div class="container">
         <a class="navbar-brand fw-bold" href="/index.php">
             <i class="bi bi-music-note-beamed text-warning"></i>
-            <span class="text-warning">Karneval</span> Reservierung
+            <span class="text-warning">Kameruner</span>-Tickets
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
             <span class="navbar-toggler-icon"></span>

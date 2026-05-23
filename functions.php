@@ -1,6 +1,6 @@
 <?php
 /**
- * Hilfsfunktionen für das Karnevals-Reservierungssystem
+ * Hilfsfunktionen für Kameruner-Tickets
  */
 
 require_once __DIR__ . '/config.php';
