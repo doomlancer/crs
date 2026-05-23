@@ -58,6 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 };
                 $filename = 'event_' . $eventId . '_' . time() . '.' . $ext;
                 $destDir  = __DIR__ . '/../uploads/tischplan/';
+                if (!is_dir($destDir)) {
+                    mkdir($destDir, 0750, true);
+                }
                 $destPath = $destDir . $filename;
 
                 // Altes Bild löschen
