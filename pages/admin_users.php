@@ -128,6 +128,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // ── Benutzer löschen ────────────────────────────────────────────────────
+    if ($postAction === 'delete_user') {
+        $id = (int)($_POST['user_id'] ?? 0);
+        if ($id === $myId) {
+            setFlash('error', 'Sie können Ihr eigenes Konto nicht löschen.');
+            redirect('/pages/admin_users.php');
+        }
+        if ($id > 0) {
+            $stmt = $pdo->prepare('SELECT vorname, nachname, email FROM users WHERE id=?');
+            $stmt->execute([$id]);
+            $u = $stmt->fetch();
+            if ($u) {
+                $pdo->prepare('DELETE FROM users WHERE id=?')->execute([$id]);
+                logAudit('DELETE', 'users', $id,
+                    "Benutzer gelöscht: {$u['vorname']} {$u['nachname']} ({$u['email']})");
+                setFlash('success', "Benutzer {$u['vorname']} {$u['nachname']} wurde gelöscht.");
+            }
+        }
+        redirect('/pages/admin_users.php');
+    }
+
     // ── Aktiv-Status umschalten ──────────────────────────────────────────────
     if ($postAction === 'toggle_aktiv') {
         $id = (int)($_POST['user_id'] ?? 0);
@@ -462,6 +483,17 @@ include __DIR__ . '/../includes/navbar.php';
                                             title="<?= $u['aktiv'] ? 'Deaktivieren' : 'Aktivieren' ?>"
                                             onclick="return confirm('Benutzer <?= $u['aktiv'] ? 'deaktivieren' : 'aktivieren' ?>?');">
                                         <i class="bi bi-<?= $u['aktiv'] ? 'slash-circle' : 'check-circle' ?>"></i>
+                                    </button>
+                                </form>
+                                <form method="post" class="d-inline">
+                                    <?= csrfField() ?>
+                                    <input type="hidden" name="post_action" value="delete_user">
+                                    <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-danger"
+                                            title="Löschen"
+                                            onclick="return confirm('Benutzer <?= htmlspecialchars(addslashes($u['vorname'] . ' ' . $u['nachname'])) ?> endgültig löschen?<?= (int)$u['reservierungen'] > 0 ? ' Achtung: Dieser Benutzer hat ' . (int)$u['reservierungen'] . ' Reservierung(en)!' : '' ?>');">
+                                        <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
                                 <?php else: ?>
