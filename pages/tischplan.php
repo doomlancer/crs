@@ -428,12 +428,13 @@ function toggleSeat(btn) {
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '/api/reserve_seat.php';
-            form.innerHTML = `
-                <input type="hidden" name="csrf_token" value="${document.querySelector('[name=csrf_token]').value}">
-                <input type="hidden" name="action" value="cancel">
-                <input type="hidden" name="event_id" value="${document.querySelector('[name=event_id]').value}">
-                <input type="hidden" name="seat_ids" value="${seatId}">
-            `;
+            const csrfVal  = document.querySelector('[name=csrf_token]').value;
+            const eventVal = document.querySelector('[name=event_id]').value;
+            form.innerHTML =
+                '<input type="hidden" name="csrf_token" value="' + csrfVal + '">' +
+                '<input type="hidden" name="action" value="cancel">' +
+                '<input type="hidden" name="event_id" value="' + eventVal + '">' +
+                '<input type="hidden" name="seat_ids" value="' + seatId + '">';
             document.body.appendChild(form);
             form.submit();
         }
@@ -476,8 +477,8 @@ function updatePanel() {
         const item = document.createElement('div');
         item.className = 'badge bg-purple text-white d-flex justify-content-between align-items-center mb-1 px-2 py-1';
         item.style.background = '#8b5cf6';
-        item.innerHTML = `<span><i class="bi bi-chair me-1"></i>Tisch ${data.tischnummer}, Platz ${data.sitzplatznummer}</span>
-            <button type="button" class="btn-close btn-close-white btn-sm ms-2" style="font-size:0.6rem;" onclick="removeSeat('${seatId}')"></button>`;
+        item.innerHTML = '<span><i class="bi bi-chair me-1"></i>Tisch ' + data.tischnummer + ', Platz ' + data.sitzplatznummer + '</span>' +
+            '<button type="button" class="btn-close btn-close-white btn-sm ms-2" style="font-size:0.6rem;" onclick="removeSeat(\'' + seatId + '\')"></button>';
         list.appendChild(item);
     });
 
@@ -487,7 +488,7 @@ function updatePanel() {
 }
 
 function removeSeat(seatId) {
-    const btn = document.querySelector(`.seat-btn[data-seat-id="${seatId}"]`);
+    const btn = document.querySelector('.seat-btn[data-seat-id="' + seatId + '"]');
     if (btn) {
         btn.classList.remove('ausgewaehlt');
         btn.classList.add('verfuegbar');
@@ -498,7 +499,7 @@ function removeSeat(seatId) {
 
 function clearSelection() {
     selectedSeats.forEach((data, seatId) => {
-        const btn = document.querySelector(`.seat-btn[data-seat-id="${seatId}"]`);
+        const btn = document.querySelector('.seat-btn[data-seat-id="' + seatId + '"]');
         if (btn) {
             btn.classList.remove('ausgewaehlt');
             btn.classList.add('verfuegbar');
