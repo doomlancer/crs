@@ -26,6 +26,150 @@ $userId  = (int)$_SESSION['user_id'];
 $eventId = (int)($_POST['event_id'] ?? 0);
 $action  = $_POST['action'] ?? 'reserve';
 
+// ════════════════════════════════════════════════════════════════════
+// Auto-Reservierung: Tisch + Anzahl (kein manuelles Sitzplatz-Picking)
+// ════════════════════════════════════════════════════════════════════
+if ($action === 'reserve_auto') {
+    if (!$eventId) {
+        setFlash('error', 'Kein Event ausgewählt.');
+        redirect('/pages/tischplan.php');
+    }
+
+    $selectionsJson = trim($_POST['selections'] ?? '');
+    $selections     = json_decode($selectionsJson, true);
+
+    if (!is_array($selections) || empty($selections)) {
+        setFlash('error', 'Keine Tischauswahl übermittelt.');
+        redirect('/pages/tischplan.php?event_id=' . $eventId);
+    }
+
+    // Gesamtanzahl prüfen
+    $totalSeats = 0;
+    foreach ($selections as $sel) {
+        if (!isset($sel['table_id'], $sel['anzahl'])) {
+            setFlash('error', 'Ungültige Tischauswahl.');
+            redirect('/pages/tischplan.php?event_id=' . $eventId);
+        }
+        $totalSeats += max(0, (int)$sel['anzahl']);
+    }
+    if ($totalSeats < 1 || $totalSeats > 20) {
+        setFlash('error', 'Ungültige Anzahl (max. 20 Plätze pro Buchung).');
+        redirect('/pages/tischplan.php?event_id=' . $eventId);
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Event prüfen
+        if (hasRole('admin')) {
+            $stmtEvent = $pdo->prepare("SELECT id FROM events WHERE id = ? AND status != 'abgerechnet'");
+        } else {
+            $stmtEvent = $pdo->prepare("SELECT id FROM events WHERE id = ? AND status = 'aktiv'");
+        }
+        $stmtEvent->execute([$eventId]);
+        if (!$stmtEvent->fetch()) {
+            $pdo->rollBack();
+            setFlash('error', 'Dieses Event ist nicht verfügbar.');
+            redirect('/pages/events.php');
+        }
+
+        // Zahlungsart des Benutzers
+        $stmtUser = $pdo->prepare('SELECT zahlungsart FROM users WHERE id = ?');
+        $stmtUser->execute([$userId]);
+        $zahlungsart = $stmtUser->fetchColumn() ?: 'bar';
+
+        $stmtRes  = $pdo->prepare(
+            'INSERT INTO reservations (user_id, event_id, seat_id, buchungsnummer, preis)
+             VALUES (?, ?, ?, ?, ?)'
+        );
+        $stmtPay  = $pdo->prepare(
+            'INSERT INTO payments (reservation_id, zahlungsart, betrag, status)
+             VALUES (?, ?, ?, "offen")'
+        );
+        $stmtSeat = $pdo->prepare("UPDATE seats SET status = 'reserviert' WHERE id = ?");
+
+        $buchungsnummern = [];
+
+        foreach ($selections as $sel) {
+            $tableId = (int)$sel['table_id'];
+            $anzahl  = max(1, min(10, (int)$sel['anzahl']));
+
+            // Tisch muss zum Event gehören
+            $stmtTbl = $pdo->prepare('SELECT id FROM `tables` WHERE id = ? AND event_id = ?');
+            $stmtTbl->execute([$tableId, $eventId]);
+            if (!$stmtTbl->fetch()) {
+                $pdo->rollBack();
+                setFlash('error', 'Tisch gehört nicht zu diesem Event.');
+                redirect('/pages/tischplan.php?event_id=' . $eventId);
+            }
+
+            // Verfügbare Sitze sperren
+            $stmtAvail = $pdo->prepare(
+                'SELECT id FROM seats WHERE table_id = ? AND status = "verfuegbar" LIMIT ? FOR UPDATE'
+            );
+            $stmtAvail->execute([$tableId, $anzahl]);
+            $availSeats = $stmtAvail->fetchAll(PDO::FETCH_COLUMN);
+
+            if (count($availSeats) < $anzahl) {
+                $pdo->rollBack();
+                setFlash('error', 'Nicht genug freie Plätze an einem der gewählten Tische. Bitte neu auswählen.');
+                redirect('/pages/tischplan.php?event_id=' . $eventId);
+            }
+
+            foreach ($availSeats as $seatId) {
+                $bn = generateBuchungsnummer();
+                $stmtRes->execute([$userId, $eventId, $seatId, $bn, TICKET_PREIS]);
+                $rid = (int)$pdo->lastInsertId();
+                $stmtPay->execute([$rid, $zahlungsart, TICKET_PREIS]);
+                $stmtSeat->execute([$seatId]);
+                $buchungsnummern[] = $bn;
+                logAudit('RESERVIERUNG', 'reservations', $rid,
+                    "Auto-Buchung: {$bn}, Event: {$eventId}, Tisch: {$tableId}");
+            }
+        }
+
+        $pdo->commit();
+
+        // Bestätigungs-E-Mail
+        $stmtUserInfo = $pdo->prepare('SELECT email, vorname FROM users WHERE id = ?');
+        $stmtUserInfo->execute([$userId]);
+        $userInfo = $stmtUserInfo->fetch();
+        $stmtEvtInfo = $pdo->prepare('SELECT name, datum FROM events WHERE id = ?');
+        $stmtEvtInfo->execute([$eventId]);
+        $evtInfo = $stmtEvtInfo->fetch();
+
+        if ($userInfo && $evtInfo) {
+            $buchungenFuerMail = [];
+            $stmtBuch = $pdo->prepare(
+                'SELECT r.buchungsnummer, r.preis, t.tischnummer, s.sitzplatznummer
+                 FROM reservations r
+                 JOIN seats s ON r.seat_id = s.id
+                 JOIN tables t ON s.table_id = t.id
+                 WHERE r.buchungsnummer = ?'
+            );
+            foreach ($buchungsnummern as $bn) {
+                $stmtBuch->execute([$bn]);
+                $row = $stmtBuch->fetch();
+                if ($row) $buchungenFuerMail[] = $row;
+            }
+            sendReservierungsbestaetigung(
+                $userInfo['email'], $userInfo['vorname'],
+                $buchungenFuerMail, $evtInfo['name'], $evtInfo['datum']
+            );
+        }
+
+        $anzahl = count($buchungsnummern);
+        setFlash('success', "✓ {$anzahl} Platz/Plätze erfolgreich reserviert!");
+        redirect('/pages/meine_reservierungen.php');
+
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('Auto-Reservierung Fehler: ' . $e->getMessage());
+        setFlash('error', 'Technischer Fehler bei der Reservierung. Bitte erneut versuchen.');
+        redirect('/pages/tischplan.php?event_id=' . $eventId);
+    }
+}
+
 // Stornierung
 if ($action === 'cancel') {
     $reservationId = (int)($_POST['reservation_id'] ?? 0);

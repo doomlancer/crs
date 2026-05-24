@@ -598,10 +598,7 @@ include __DIR__ . '/../includes/navbar.php';
                                    class="btn btn-outline-primary" title="Tische verwalten">
                                     <i class="bi bi-grid-3x3"></i>
                                 </a>
-                                <a href="/pages/admin_tischplan_editor.php?event_id=<?= $ev['id'] ?>"
-                                   class="btn btn-outline-info" title="Visueller Tischplan-Editor">
-                                    <i class="bi bi-map"></i>
-                                </a>
+
                                 <a href="/pages/admin_events.php?action=edit&event_id=<?= $ev['id'] ?>"
                                    class="btn btn-outline-warning" title="Bearbeiten">
                                     <i class="bi bi-pencil"></i>
