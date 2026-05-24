@@ -425,125 +425,184 @@ include __DIR__ . '/../includes/navbar.php';
 </main>
 
 <?php
-$extraScripts = <<<JS
+// ob_start/ob_get_clean: PHP-Tags (<?= ?>) werden korrekt verarbeitet,
+// was in einem Heredoc NICHT möglich wäre.
+ob_start();
+?>
 <script>
-const TICKET_PREIS = <?= TICKET_PREIS ?>;
-let selectedSeats = new Map(); // seat_id => {tischnummer, sitzplatznummer}
+(function () {
+"use strict";
 
+// PHP-Wert wird hier korrekt eingebettet (kein Heredoc!)
+var TICKET_PREIS = <?= json_encode((float)TICKET_PREIS) ?>;
+var selectedSeats = {}; // seat_id (string) => {tischnummer, sitzplatznummer}
+
+// -------------------------------------------------------
+// Sitzplatz auswählen / abwählen / Stornierung
+// -------------------------------------------------------
 function toggleSeat(btn) {
-    const seatId = btn.dataset.seatId;
-    const meinPlatz = btn.dataset.meinPlatz === '1';
+    var seatId    = btn.getAttribute("data-seat-id");
+    var meinPlatz = btn.getAttribute("data-mein-platz") === "1";
 
     if (meinPlatz) {
-        // Eigene Reservierung - stornieren?
-        if (confirm('Möchten Sie diese Reservierung (Tisch ' + btn.dataset.tischnummer + ', Platz ' + btn.dataset.sitzplatznummer + ') stornieren?')) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/api/reserve_seat.php';
-            const csrfVal  = document.querySelector('[name=csrf_token]').value;
-            const eventVal = document.querySelector('[name=event_id]').value;
+        if (confirm("M\u00f6chten Sie diese Reservierung (Tisch " +
+                btn.getAttribute("data-tischnummer") + ", Platz " +
+                btn.getAttribute("data-sitzplatznummer") + ") stornieren?")) {
+            var form     = document.createElement("form");
+            form.method  = "POST";
+            form.action  = "/api/reserve_seat.php";
+            var csrfEl   = document.querySelector("[name=csrf_token]");
+            var eventEl  = document.querySelector("[name=event_id]");
+            var csrfVal  = csrfEl  ? csrfEl.value  : "";
+            var eventVal = eventEl ? eventEl.value : "";
             form.innerHTML =
-                '<input type="hidden" name="csrf_token" value="' + csrfVal + '">' +
-                '<input type="hidden" name="action" value="cancel">' +
-                '<input type="hidden" name="event_id" value="' + eventVal + '">' +
-                '<input type="hidden" name="seat_ids" value="' + seatId + '">';
+                "<input type=\"hidden\" name=\"csrf_token\" value=\"" + csrfVal  + "\">" +
+                "<input type=\"hidden\" name=\"action\"     value=\"cancel\">"             +
+                "<input type=\"hidden\" name=\"event_id\"   value=\"" + eventVal + "\">" +
+                "<input type=\"hidden\" name=\"seat_ids\"   value=\"" + seatId   + "\">";
             document.body.appendChild(form);
             form.submit();
         }
         return;
     }
 
-    if (selectedSeats.has(seatId)) {
-        selectedSeats.delete(seatId);
-        btn.classList.remove('ausgewaehlt');
-        btn.classList.add('verfuegbar');
+    if (selectedSeats.hasOwnProperty(seatId)) {
+        delete selectedSeats[seatId];
+        btn.classList.remove("ausgewaehlt");
+        btn.classList.add("verfuegbar");
     } else {
-        selectedSeats.set(seatId, {
-            tischnummer: btn.dataset.tischnummer,
-            sitzplatznummer: btn.dataset.sitzplatznummer
-        });
-        btn.classList.remove('verfuegbar');
-        btn.classList.add('ausgewaehlt');
+        selectedSeats[seatId] = {
+            tischnummer:     btn.getAttribute("data-tischnummer"),
+            sitzplatznummer: btn.getAttribute("data-sitzplatznummer")
+        };
+        btn.classList.remove("verfuegbar");
+        btn.classList.add("ausgewaehlt");
     }
     updatePanel();
 }
 
+// -------------------------------------------------------
+// Reservierungs-Panel aktualisieren
+// -------------------------------------------------------
 function updatePanel() {
-    const panel = document.getElementById('selectionPanel');
-    const noSel = document.getElementById('noSelection');
-    const list = document.getElementById('selectedSeatsList');
-    const totalEl = document.getElementById('totalPrice');
-    const input = document.getElementById('seatIdsInput');
+    var panel   = document.getElementById("selectionPanel");
+    var noSel   = document.getElementById("noSelection");
+    var list    = document.getElementById("selectedSeatsList");
+    var totalEl = document.getElementById("totalPrice");
+    var input   = document.getElementById("seatIdsInput");
 
-    if (selectedSeats.size === 0) {
-        panel.style.display = 'none';
-        noSel.style.display = 'block';
+    var keys = Object.keys(selectedSeats);
+
+    if (keys.length === 0) {
+        panel.style.display = "none";
+        noSel.style.display = "block";
         return;
     }
 
-    panel.style.display = 'block';
-    noSel.style.display = 'none';
+    panel.style.display = "block";
+    noSel.style.display = "none";
 
-    list.innerHTML = '';
-    selectedSeats.forEach((data, seatId) => {
-        const item = document.createElement('div');
-        item.className = 'badge bg-purple text-white d-flex justify-content-between align-items-center mb-1 px-2 py-1';
-        item.style.background = '#8b5cf6';
-        item.innerHTML = '<span><i class="bi bi-chair me-1"></i>Tisch ' + data.tischnummer + ', Platz ' + data.sitzplatznummer + '</span>' +
-            '<button type="button" class="btn-close btn-close-white btn-sm ms-2" style="font-size:0.6rem;" onclick="removeSeat(\'' + seatId + '\')"></button>';
+    list.innerHTML = "";
+    for (var i = 0; i < keys.length; i++) {
+        var sid  = keys[i];
+        var data = selectedSeats[sid];
+        var item = document.createElement("div");
+        item.className    = "d-flex justify-content-between align-items-center mb-1 px-2 py-1";
+        item.style.background  = "#8b5cf6";
+        item.style.borderRadius = "4px";
+        item.style.color = "#fff";
+        item.style.fontSize = "0.8rem";
+        item.innerHTML =
+            "<span><i class=\"bi bi-chair me-1\"></i>Tisch " +
+            data.tischnummer + ", Platz " + data.sitzplatznummer + "</span>" +
+            "<button type=\"button\" class=\"btn-close btn-close-white btn-sm ms-2\"" +
+            " style=\"font-size:0.6rem;\" onclick=\"removeSeat('" + sid + "')\"></button>";
         list.appendChild(item);
-    });
+    }
 
-    const total = selectedSeats.size * TICKET_PREIS;
-    totalEl.textContent = total.toFixed(2).replace('.', ',') + ' €';
-    input.value = Array.from(selectedSeats.keys()).join(',');
+    var total = keys.length * TICKET_PREIS;
+    totalEl.textContent = total.toFixed(2).replace(".", ",") + " \u20ac";
+    input.value = keys.join(",");
 }
 
+// -------------------------------------------------------
+// Einzelnen Sitz aus Auswahl entfernen
+// -------------------------------------------------------
 function removeSeat(seatId) {
-    const btn = document.querySelector('.seat-btn[data-seat-id="' + seatId + '"]');
+    var btn = document.querySelector(".seat-btn[data-seat-id=\"" + seatId + "\"]");
     if (btn) {
-        btn.classList.remove('ausgewaehlt');
-        btn.classList.add('verfuegbar');
+        btn.classList.remove("ausgewaehlt");
+        btn.classList.add("verfuegbar");
     }
-    selectedSeats.delete(seatId);
+    delete selectedSeats[seatId];
     updatePanel();
 }
 
+// -------------------------------------------------------
+// Gesamte Auswahl leeren
+// -------------------------------------------------------
 function clearSelection() {
-    selectedSeats.forEach((data, seatId) => {
-        const btn = document.querySelector('.seat-btn[data-seat-id="' + seatId + '"]');
+    var keys = Object.keys(selectedSeats);
+    for (var i = 0; i < keys.length; i++) {
+        var btn = document.querySelector(".seat-btn[data-seat-id=\"" + keys[i] + "\"]");
         if (btn) {
-            btn.classList.remove('ausgewaehlt');
-            btn.classList.add('verfuegbar');
+            btn.classList.remove("ausgewaehlt");
+            btn.classList.add("verfuegbar");
         }
-    });
-    selectedSeats.clear();
+    }
+    selectedSeats = {};
     updatePanel();
 }
 
-// Formular abschicken
-document.getElementById('reservationForm')?.addEventListener('submit', function(e) {
-    if (selectedSeats.size === 0) {
-        e.preventDefault();
-        alert('Bitte wählen Sie mindestens einen Sitzplatz aus.');
-        return;
-    }
-    const btn = document.getElementById('reserveBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reservierung läuft...';
-});
-
-// Tooltips initialisieren
-document.addEventListener('DOMContentLoaded', () => {
-    const tooltipEls = document.querySelectorAll('[title]');
-    tooltipEls.forEach(el => {
-        if (el.classList.contains('seat-btn')) {
-            new bootstrap.Tooltip(el, { placement: 'top', trigger: 'hover' });
+// -------------------------------------------------------
+// Formular-Submit: Validierung + Lade-Feedback
+// -------------------------------------------------------
+var reservForm = document.getElementById("reservationForm");
+if (reservForm) {
+    reservForm.addEventListener("submit", function(e) {
+        if (Object.keys(selectedSeats).length === 0) {
+            e.preventDefault();
+            alert("Bitte w\u00e4hlen Sie mindestens einen Sitzplatz aus.");
+            return;
+        }
+        var btn = document.getElementById("reserveBtn");
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML =
+                "<span class=\"spinner-border spinner-border-sm me-2\"></span>" +
+                "Reservierung l\u00e4uft...";
         }
     });
-});
+}
+
+// -------------------------------------------------------
+// Globale Exports (von inline-onclick im HTML gerufen)
+// -------------------------------------------------------
+window.toggleSeat     = toggleSeat;
+window.removeSeat     = removeSeat;
+window.clearSelection = clearSelection;
+
+// -------------------------------------------------------
+// Tooltips (Bootstrap) – nur wenn Bootstrap verfügbar
+// -------------------------------------------------------
+function initTooltips() {
+    if (typeof bootstrap === "undefined" || !bootstrap.Tooltip) return;
+    var els = document.querySelectorAll(".seat-btn[title]");
+    for (var i = 0; i < els.length; i++) {
+        new bootstrap.Tooltip(els[i], { placement: "top", trigger: "hover" });
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTooltips);
+} else {
+    initTooltips();
+}
+
+})();
 </script>
-JS;
+<?php
+$extraScripts = ob_get_clean();
 
 include __DIR__ . '/../includes/footer.php';
 ?>
