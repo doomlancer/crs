@@ -74,14 +74,22 @@ $extraHead = '<style>
     .tisch-block { background: #16213e; border-radius: 10px; padding: 12px; min-width: 120px; border: 2px solid #0f3460; }
     .tisch-label { color: #94a3b8; font-size: 0.75rem; text-align: center; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
     .seats-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-    .seat-btn { width: 38px; height: 38px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; transition: all 0.2s; position: relative; }
-    .seat-btn.verfuegbar { background: #22c55e; border-color: #16a34a; color: #fff; }
-    .seat-btn.verfuegbar:hover { background: #16a34a; transform: scale(1.15); box-shadow: 0 0 12px rgba(34,197,94,0.5); }
-    .seat-btn.reserviert { background: #eab308; border-color: #ca8a04; color: #000; cursor: not-allowed; }
-    .seat-btn.besetzt { background: #ef4444; border-color: #dc2626; color: #fff; cursor: not-allowed; }
-    .seat-btn.mein-platz { background: #3b82f6; border-color: #2563eb; color: #fff; cursor: pointer; }
-    .seat-btn.mein-platz:hover { background: #2563eb; transform: scale(1.15); }
-    .seat-btn.ausgewaehlt { background: #8b5cf6; border-color: #7c3aed; color: #fff; box-shadow: 0 0 15px rgba(139,92,246,0.6); transform: scale(1.1); }
+    .seat-btn {
+        width: 44px; height: 44px;
+        border-radius: 8px; border: 2px solid transparent;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.7rem; font-weight: 700;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        position: relative;
+    }
+    .seat-btn.verfuegbar  { background: #22c55e; border-color: #16a34a; color: #fff; }
+    .seat-btn.reserviert  { background: #eab308; border-color: #ca8a04; color: #000; cursor: not-allowed; }
+    .seat-btn.besetzt     { background: #ef4444; border-color: #dc2626; color: #fff; cursor: not-allowed; }
+    .seat-btn.mein-platz  { background: #3b82f6; border-color: #2563eb; color: #fff; cursor: pointer; }
+    .seat-btn.ausgewaehlt { background: #8b5cf6; border-color: #7c3aed; color: #fff;
+                            box-shadow: 0 0 15px rgba(139,92,246,0.6); }
     .legend-dot { width: 16px; height: 16px; border-radius: 4px; display: inline-block; }
     .reservation-panel { position: sticky; top: 80px; }
     .selected-seats-list { max-height: 200px; overflow-y: auto; }
@@ -425,52 +433,53 @@ include __DIR__ . '/../includes/navbar.php';
 </main>
 
 <?php
-// ob_start/ob_get_clean: PHP-Tags (<?= ?>) werden korrekt verarbeitet,
-// was in einem Heredoc NICHT möglich wäre.
-ob_start();
+// Script direkt eingebettet (vor footer.php), kein $extraScripts-Mechanismus.
+// PHP-Tags funktionieren hier ohne Tricks.
 ?>
 <script>
-(function () {
-"use strict";
+/* ============================================================
+   Tischplan – Sitzplatzauswahl & Reservierung
+   Kein IIFE, globale Funktionen, max. Browserkompatibilität
+   ============================================================ */
 
-// PHP-Wert wird hier korrekt eingebettet (kein Heredoc!)
-var TICKET_PREIS = <?= json_encode((float)TICKET_PREIS) ?>;
-var selectedSeats = {}; // seat_id (string) => {tischnummer, sitzplatznummer}
+var TICKET_PREIS  = <?= json_encode((float)TICKET_PREIS) ?>;
+var selectedSeats = {};   /* seat_id => {tischnummer, sitzplatznummer} */
 
-// -------------------------------------------------------
-// Sitzplatz auswählen / abwählen / Stornierung
-// -------------------------------------------------------
+/* ----------------------------------------------------------
+   Sitzplatz anklicken / antippen
+   ---------------------------------------------------------- */
 function toggleSeat(btn) {
     var seatId    = btn.getAttribute("data-seat-id");
     var meinPlatz = btn.getAttribute("data-mein-platz") === "1";
 
     if (meinPlatz) {
-        if (confirm("M\u00f6chten Sie diese Reservierung (Tisch " +
-                btn.getAttribute("data-tischnummer") + ", Platz " +
-                btn.getAttribute("data-sitzplatznummer") + ") stornieren?")) {
-            var form     = document.createElement("form");
-            form.method  = "POST";
-            form.action  = "/api/reserve_seat.php";
-            var csrfEl   = document.querySelector("[name=csrf_token]");
-            var eventEl  = document.querySelector("[name=event_id]");
-            var csrfVal  = csrfEl  ? csrfEl.value  : "";
-            var eventVal = eventEl ? eventEl.value : "";
-            form.innerHTML =
-                "<input type=\"hidden\" name=\"csrf_token\" value=\"" + csrfVal  + "\">" +
-                "<input type=\"hidden\" name=\"action\"     value=\"cancel\">"             +
-                "<input type=\"hidden\" name=\"event_id\"   value=\"" + eventVal + "\">" +
-                "<input type=\"hidden\" name=\"seat_ids\"   value=\"" + seatId   + "\">";
-            document.body.appendChild(form);
-            form.submit();
-        }
+        /* Eigene Reservierung stornieren */
+        var tnr  = btn.getAttribute("data-tischnummer");
+        var snr  = btn.getAttribute("data-sitzplatznummer");
+        if (!confirm("Reservierung stornieren?\nTisch " + tnr + ", Platz " + snr)) return;
+
+        var csrfEl  = document.querySelector("[name=csrf_token]");
+        var eventEl = document.querySelector("[name=event_id]");
+        var f = document.createElement("form");
+        f.method = "POST";
+        f.action = "/api/reserve_seat.php";
+        f.innerHTML =
+            '<input type="hidden" name="csrf_token"    value="' + (csrfEl  ? csrfEl.value  : "") + '">' +
+            '<input type="hidden" name="action"        value="cancel">'                               +
+            '<input type="hidden" name="event_id"      value="' + (eventEl ? eventEl.value : "") + '">' +
+            '<input type="hidden" name="seat_ids"      value="' + seatId + '">';
+        document.body.appendChild(f);
+        f.submit();
         return;
     }
 
-    if (selectedSeats.hasOwnProperty(seatId)) {
+    if (selectedSeats[seatId]) {
+        /* Abwählen */
         delete selectedSeats[seatId];
         btn.classList.remove("ausgewaehlt");
         btn.classList.add("verfuegbar");
     } else {
+        /* Auswählen */
         selectedSeats[seatId] = {
             tischnummer:     btn.getAttribute("data-tischnummer"),
             sitzplatznummer: btn.getAttribute("data-sitzplatznummer")
@@ -478,18 +487,42 @@ function toggleSeat(btn) {
         btn.classList.remove("verfuegbar");
         btn.classList.add("ausgewaehlt");
     }
-    updatePanel();
+    _updatePanel();
 }
 
-// -------------------------------------------------------
-// Reservierungs-Panel aktualisieren
-// -------------------------------------------------------
-function updatePanel() {
+/* ----------------------------------------------------------
+   Einen Sitz aus der Auswahl entfernen (X-Button im Panel)
+   ---------------------------------------------------------- */
+function removeSeat(seatId) {
+    var btn = document.querySelector('.seat-btn[data-seat-id="' + seatId + '"]');
+    if (btn) { btn.classList.remove("ausgewaehlt"); btn.classList.add("verfuegbar"); }
+    delete selectedSeats[seatId];
+    _updatePanel();
+}
+
+/* ----------------------------------------------------------
+   Gesamte Auswahl leeren
+   ---------------------------------------------------------- */
+function clearSelection() {
+    var keys = Object.keys(selectedSeats);
+    for (var i = 0; i < keys.length; i++) {
+        var b = document.querySelector('.seat-btn[data-seat-id="' + keys[i] + '"]');
+        if (b) { b.classList.remove("ausgewaehlt"); b.classList.add("verfuegbar"); }
+    }
+    selectedSeats = {};
+    _updatePanel();
+}
+
+/* ----------------------------------------------------------
+   Reservierungs-Panel aktualisieren (intern)
+   ---------------------------------------------------------- */
+function _updatePanel() {
     var panel   = document.getElementById("selectionPanel");
     var noSel   = document.getElementById("noSelection");
     var list    = document.getElementById("selectedSeatsList");
     var totalEl = document.getElementById("totalPrice");
     var input   = document.getElementById("seatIdsInput");
+    if (!panel) return;
 
     var keys = Object.keys(selectedSeats);
 
@@ -505,18 +538,26 @@ function updatePanel() {
     list.innerHTML = "";
     for (var i = 0; i < keys.length; i++) {
         var sid  = keys[i];
-        var data = selectedSeats[sid];
+        var d    = selectedSeats[sid];
         var item = document.createElement("div");
-        item.className    = "d-flex justify-content-between align-items-center mb-1 px-2 py-1";
-        item.style.background  = "#8b5cf6";
-        item.style.borderRadius = "4px";
-        item.style.color = "#fff";
-        item.style.fontSize = "0.8rem";
+        item.style.cssText = "display:flex;justify-content:space-between;align-items:center;" +
+                             "background:#8b5cf6;color:#fff;border-radius:4px;" +
+                             "padding:4px 8px;margin-bottom:4px;font-size:0.8rem;";
         item.innerHTML =
-            "<span><i class=\"bi bi-chair me-1\"></i>Tisch " +
-            data.tischnummer + ", Platz " + data.sitzplatznummer + "</span>" +
-            "<button type=\"button\" class=\"btn-close btn-close-white btn-sm ms-2\"" +
-            " style=\"font-size:0.6rem;\" onclick=\"removeSeat('" + sid + "')\"></button>";
+            '<span><i class="bi bi-chair me-1"></i>Tisch ' + d.tischnummer +
+            ', Platz ' + d.sitzplatznummer + '</span>';
+        /* Remove-Button via addEventListener (kein inline-onclick mit Anführungszeichen-Konflikt) */
+        var xBtn = document.createElement("button");
+        xBtn.type      = "button";
+        xBtn.className = "btn-close btn-close-white btn-sm ms-2";
+        xBtn.style.fontSize = "0.6rem";
+        xBtn.setAttribute("data-sid", sid);
+        xBtn.addEventListener("click", function() { removeSeat(this.getAttribute("data-sid")); });
+        xBtn.addEventListener("touchend", function(ev) {
+            ev.preventDefault();
+            removeSeat(this.getAttribute("data-sid"));
+        });
+        item.appendChild(xBtn);
         list.appendChild(item);
     }
 
@@ -525,84 +566,26 @@ function updatePanel() {
     input.value = keys.join(",");
 }
 
-// -------------------------------------------------------
-// Einzelnen Sitz aus Auswahl entfernen
-// -------------------------------------------------------
-function removeSeat(seatId) {
-    var btn = document.querySelector(".seat-btn[data-seat-id=\"" + seatId + "\"]");
-    if (btn) {
-        btn.classList.remove("ausgewaehlt");
-        btn.classList.add("verfuegbar");
-    }
-    delete selectedSeats[seatId];
-    updatePanel();
-}
-
-// -------------------------------------------------------
-// Gesamte Auswahl leeren
-// -------------------------------------------------------
-function clearSelection() {
-    var keys = Object.keys(selectedSeats);
-    for (var i = 0; i < keys.length; i++) {
-        var btn = document.querySelector(".seat-btn[data-seat-id=\"" + keys[i] + "\"]");
-        if (btn) {
-            btn.classList.remove("ausgewaehlt");
-            btn.classList.add("verfuegbar");
-        }
-    }
-    selectedSeats = {};
-    updatePanel();
-}
-
-// -------------------------------------------------------
-// Formular-Submit: Validierung + Lade-Feedback
-// -------------------------------------------------------
-var reservForm = document.getElementById("reservationForm");
-if (reservForm) {
-    reservForm.addEventListener("submit", function(e) {
+/* ----------------------------------------------------------
+   Formular-Submit: Validierung
+   ---------------------------------------------------------- */
+(function() {
+    var f = document.getElementById("reservationForm");
+    if (!f) return;
+    f.addEventListener("submit", function(e) {
         if (Object.keys(selectedSeats).length === 0) {
             e.preventDefault();
             alert("Bitte w\u00e4hlen Sie mindestens einen Sitzplatz aus.");
             return;
         }
-        var btn = document.getElementById("reserveBtn");
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML =
-                "<span class=\"spinner-border spinner-border-sm me-2\"></span>" +
-                "Reservierung l\u00e4uft...";
+        var b = document.getElementById("reserveBtn");
+        if (b) {
+            b.disabled   = true;
+            b.innerHTML  = '<span class="spinner-border spinner-border-sm me-2"></span>Reservierung l\u00e4uft...';
         }
     });
-}
-
-// -------------------------------------------------------
-// Globale Exports (von inline-onclick im HTML gerufen)
-// -------------------------------------------------------
-window.toggleSeat     = toggleSeat;
-window.removeSeat     = removeSeat;
-window.clearSelection = clearSelection;
-
-// -------------------------------------------------------
-// Tooltips (Bootstrap) – nur wenn Bootstrap verfügbar
-// -------------------------------------------------------
-function initTooltips() {
-    if (typeof bootstrap === "undefined" || !bootstrap.Tooltip) return;
-    var els = document.querySelectorAll(".seat-btn[title]");
-    for (var i = 0; i < els.length; i++) {
-        new bootstrap.Tooltip(els[i], { placement: "top", trigger: "hover" });
-    }
-}
-
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initTooltips);
-} else {
-    initTooltips();
-}
-
 })();
 </script>
 <?php
-$extraScripts = ob_get_clean();
-
 include __DIR__ . '/../includes/footer.php';
 ?>

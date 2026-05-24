@@ -378,90 +378,119 @@ include __DIR__ . '/../includes/navbar.php';
 </main>
 
 <?php
-// Tisch-Daten für JavaScript aufbereiten
+// Tisch-Daten für JavaScript aufbereiten (JSON, sicher für direkte JS-Einbettung)
 $tischeJs = json_encode(array_map(fn($t) => [
     'id'          => (int)$t['id'],
     'tischnummer' => (int)$t['tischnummer'],
     'max_plaetze' => (int)$t['max_plaetze'],
     'pos_x'       => $t['pos_x'] !== null ? (float)$t['pos_x'] : null,
     'pos_y'       => $t['pos_y'] !== null ? (float)$t['pos_y'] : null,
-], $tische));
+], $tische), JSON_HEX_TAG | JSON_HEX_AMP);
+?>
+<script>
+/* ============================================================
+   Tischplan-Editor – Tische visuell platzieren
+   Direkt eingebettet, kein IIFE, globale Funktionen
+   ============================================================ */
 
-$extraScripts = '<script>
-(function () {
-"use strict";
+var _EVT   = <?= $eventId ?>;
+var _CSRF  = <?= json_encode($_SESSION['csrf_token'] ?? '', JSON_HEX_TAG) ?>;
+var _TBL   = <?= $tischeJs ?>;
 
-var EVENT_ID   = ' . $eventId . ';
-var CSRF_TOKEN = ' . json_encode($_SESSION['csrf_token'] ?? '') . ';
-var tische     = ' . $tischeJs . ';
+/* Zustand */
+var _pos       = {};   /* table_id => {x, y} */
+var _active    = null; /* aktive table_id */
+var _touched   = false;/* Touch-Guard: verhindert touch→click Doppelauslösung */
 
-// -------------------------------------------------------
-// Zustand
-// -------------------------------------------------------
-var positions     = {};
-var activeTableId = null;
-var touchHandled  = false; // verhindert Doppelauslösung touch → click
-
-tische.forEach(function(t) {
-    if (t.pos_x !== null && t.pos_y !== null) {
-        positions[t.id] = { x: t.pos_x, y: t.pos_y };
+/* Positionen aus DB vorbelegen */
+for (var _i = 0; _i < _TBL.length; _i++) {
+    if (_TBL[_i].pos_x !== null && _TBL[_i].pos_y !== null) {
+        _pos[_TBL[_i].id] = { x: _TBL[_i].pos_x, y: _TBL[_i].pos_y };
     }
-});
+}
 
-// -------------------------------------------------------
-// Init (läuft sobald DOM bereit ist)
-// -------------------------------------------------------
-function initEditor() {
+/* ----------------------------------------------------------
+   Editor initialisieren (nach DOM-Bereitschaft)
+   ---------------------------------------------------------- */
+function _initEditor() {
     var canvas = document.getElementById("editor-canvas");
-    if (!canvas) return; // kein Bild hochgeladen
+    if (!canvas) return;
 
-    // -- Touch-Handler (iOS/iPadOS Safari) --
-    // Muss VOR dem click-Handler registriert werden.
-    // { passive:false } erlaubt e.preventDefault() → unterdrückt nachfolgendes click-Event.
+    /* Touch: Scroll blockieren wenn Tisch aktiv, Platzierung auslösen */
     canvas.addEventListener("touchstart", function(e) {
-        // Scroll verhindern, wenn ein Tisch aktiv ist
-        if (activeTableId) { e.preventDefault(); }
+        if (_active) e.preventDefault();
     }, { passive: false });
 
     canvas.addEventListener("touchend", function(e) {
-        if (!activeTableId) return;
+        if (!_active) return;
         if (!e.changedTouches || e.changedTouches.length !== 1) return;
-        e.preventDefault();          // verhindert nachfolgendes click-Event
-        touchHandled = true;
+        e.preventDefault();
+        _touched = true;
         var t = e.changedTouches[0];
-        doPlace(t.clientX, t.clientY, t.target || e.target);
-        // Flag nach 600 ms zurücksetzen (Sicherheitspuffer)
-        setTimeout(function() { touchHandled = false; }, 600);
+        _doPlace(t.clientX, t.clientY, t.target || e.target);
+        setTimeout(function() { _touched = false; }, 600);
     }, { passive: false });
 
-    // -- Click-Handler (Desktop-Browser; iOS: wird durch touchHandled übersprungen) --
+    /* Click: Desktop und iOS (touchGuard verhindert Doppelauslösung) */
     canvas.addEventListener("click", function(e) {
-        if (touchHandled) return;
-        doPlace(e.clientX, e.clientY, e.target || e.srcElement);
+        if (_touched) return;
+        _doPlace(e.clientX, e.clientY, e.target || e.srcElement);
     });
 
-    // Vorhandene Marker rendern
-    tische.forEach(function(t) {
-        if (t.pos_x !== null && t.pos_y !== null) {
-            renderMarker(t.id, t.tischnummer, t.pos_x, t.pos_y);
+    /* Vorhandene Marker zeichnen */
+    for (var i = 0; i < _TBL.length; i++) {
+        if (_TBL[i].pos_x !== null && _TBL[i].pos_y !== null) {
+            _renderMarker(_TBL[i].id, _TBL[i].tischnummer, _TBL[i].pos_x, _TBL[i].pos_y);
         }
-    });
+    }
 }
 
-// -------------------------------------------------------
-// Kern-Platzierungslogik (gemeinsam für Maus & Touch)
-// -------------------------------------------------------
-function doPlace(clientX, clientY, target) {
-    if (!activeTableId) return;
+/* ----------------------------------------------------------
+   Tisch aus Liste auswählen  (onclick="selectTable(this)")
+   ---------------------------------------------------------- */
+function selectTable(el) {
+    var tid   = parseInt(el.getAttribute("data-table-id"), 10);
+    var items = document.querySelectorAll(".table-list-item");
+    for (var i = 0; i < items.length; i++) items[i].classList.remove("placing-active");
 
-    // Klick/Touch auf einen Marker oder dessen Remove-Button → ignorieren
+    var cBtn   = document.getElementById("cancelPlaceBtn");
+    var canvas = document.getElementById("editor-canvas");
+
+    if (_active === tid) { cancelPlacing(); return; }
+
+    _active = tid;
+    el.classList.add("placing-active");
+    _hint(el.getAttribute("data-tischnummer"));
+    if (cBtn)   cBtn.style.display   = "";
+    if (canvas) canvas.classList.add("placing");
+}
+
+/* ----------------------------------------------------------
+   Platzierung abbrechen  (onclick="cancelPlacing()")
+   ---------------------------------------------------------- */
+function cancelPlacing() {
+    _active = null;
+    var items = document.querySelectorAll(".table-list-item");
+    for (var i = 0; i < items.length; i++) items[i].classList.remove("placing-active");
+    _hint(null);
+    var cBtn   = document.getElementById("cancelPlaceBtn");
+    var canvas = document.getElementById("editor-canvas");
+    if (cBtn)   cBtn.style.display = "none";
+    if (canvas) canvas.classList.remove("placing");
+}
+
+/* ----------------------------------------------------------
+   Koordinaten berechnen und Marker setzen (intern)
+   ---------------------------------------------------------- */
+function _doPlace(clientX, clientY, target) {
+    if (!_active) return;
+
+    /* Klick auf Marker selbst → ignorieren */
     var node = target;
     while (node && node.id !== "editor-canvas") {
         if (node.classList &&
             (node.classList.contains("table-marker") ||
-             node.classList.contains("remove-btn"))) {
-            return;
-        }
+             node.classList.contains("remove-btn"))) return;
         node = node.parentNode;
         if (!node) break;
     }
@@ -469,261 +498,163 @@ function doPlace(clientX, clientY, target) {
     var img = document.getElementById("editorImg");
     if (!img) return;
 
-    var rect = img.getBoundingClientRect();
-    var x = ((clientX - rect.left) / rect.width)  * 100;
-    var y = ((clientY - rect.top)  / rect.height) * 100;
-
+    var r = img.getBoundingClientRect();
+    var x = ((clientX - r.left) / r.width)  * 100;
+    var y = ((clientY - r.top)  / r.height) * 100;
     if (x < 0 || x > 100 || y < 0 || y > 100) return;
 
-    x = parseFloat(x.toFixed(2));
-    y = parseFloat(y.toFixed(2));
-    positions[activeTableId] = { x: x, y: y };
+    x = Math.round(x * 100) / 100;
+    y = Math.round(y * 100) / 100;
+    _pos[_active] = { x: x, y: y };
 
-    // Marker setzen
-    var foundTable = null;
-    for (var i = 0; i < tische.length; i++) {
-        if (tische[i].id === activeTableId) { foundTable = tische[i]; break; }
+    /* Tisch-Objekt finden */
+    var found = null;
+    for (var i = 0; i < _TBL.length; i++) {
+        if (_TBL[i].id === _active) { found = _TBL[i]; break; }
     }
-    if (foundTable) renderMarker(foundTable.id, foundTable.tischnummer, x, y);
+    if (found) _renderMarker(found.id, found.tischnummer, x, y);
 
-    // Listeneintrag aktualisieren
-    var listItem = document.querySelector(
-        ".table-list-item[data-table-id=\"" + activeTableId + "\"]"
-    );
-    if (listItem) {
-        listItem.classList.add("placed");
-        var textEnd = listItem.querySelector(".text-end");
-        if (textEnd) {
-            textEnd.innerHTML =
-                "<span class=\"badge bg-success\"><i class=\"bi bi-check\"></i></span>" +
-                "<small class=\"text-muted d-block\" style=\"font-size:0.65rem;\">" +
-                x.toFixed(1) + "% / " + y.toFixed(1) + "%</small>";
-        }
+    /* Listeneintrag aktualisieren */
+    var li = document.querySelector(".table-list-item[data-table-id='" + _active + "']");
+    if (li) {
+        li.classList.add("placed");
+        var te = li.querySelector(".text-end");
+        if (te) te.innerHTML =
+            '<span class="badge bg-success"><i class="bi bi-check"></i></span>' +
+            '<small class="text-muted d-block" style="font-size:0.65rem;">' +
+            x.toFixed(1) + '% / ' + y.toFixed(1) + '%</small>';
     }
 
     cancelPlacing();
 }
 
-// -------------------------------------------------------
-// Tischauswahl (aufgerufen via onclick="selectTable(this)")
-// -------------------------------------------------------
-function selectTable(el) {
-    var tableId   = parseInt(el.getAttribute("data-table-id"), 10);
-    var items     = document.querySelectorAll(".table-list-item");
-    var cancelBtn = document.getElementById("cancelPlaceBtn");
-    var canvas    = document.getElementById("editor-canvas");
-
-    for (var i = 0; i < items.length; i++) {
-        items[i].classList.remove("placing-active");
-    }
-
-    if (activeTableId === tableId) {
-        // zweiter Klick = Abbruch
-        activeTableId = null;
-        updatePlacingHint(null);
-        if (cancelBtn) cancelBtn.style.display = "none";
-        if (canvas)    canvas.classList.remove("placing");
-        return;
-    }
-
-    activeTableId = tableId;
-    el.classList.add("placing-active");
-    updatePlacingHint(el.getAttribute("data-tischnummer"));
-    if (cancelBtn) cancelBtn.style.display = "";
-    if (canvas)    canvas.classList.add("placing");
-}
-
-// -------------------------------------------------------
-// Platzierung abbrechen
-// -------------------------------------------------------
-function cancelPlacing() {
-    activeTableId = null;
-    var items     = document.querySelectorAll(".table-list-item");
-    var cancelBtn = document.getElementById("cancelPlaceBtn");
-    var canvas    = document.getElementById("editor-canvas");
-
-    for (var i = 0; i < items.length; i++) {
-        items[i].classList.remove("placing-active");
-    }
-    updatePlacingHint(null);
-    if (cancelBtn) cancelBtn.style.display = "none";
-    if (canvas)    canvas.classList.remove("placing");
-}
-
-// -------------------------------------------------------
-// Marker rendern
-// -------------------------------------------------------
-function renderMarker(tableId, tischnummer, x, y) {
+/* ----------------------------------------------------------
+   Marker im Canvas zeichnen
+   ---------------------------------------------------------- */
+function _renderMarker(tableId, tischnummer, x, y) {
     var old = document.getElementById("marker-" + tableId);
     if (old) old.parentNode.removeChild(old);
 
     var canvas = document.getElementById("editor-canvas");
     if (!canvas) return;
 
-    var marker = document.createElement("div");
-    marker.className = "table-marker";
-    marker.id        = "marker-" + tableId;
-    marker.style.left = x + "%";
-    marker.style.top  = y + "%";
-    marker.innerHTML  =
-        "<i class=\"bi bi-grid-3x3 me-1\"></i>T" + tischnummer +
-        "<span class=\"remove-btn\" title=\"Position entfernen\">" +
-        "<i class=\"bi bi-x\"></i></span>";
+    var m = document.createElement("div");
+    m.className  = "table-marker";
+    m.id         = "marker-" + tableId;
+    m.style.left = x + "%";
+    m.style.top  = y + "%";
+    m.innerHTML  = '<i class="bi bi-grid-3x3 me-1"></i>T' + tischnummer +
+                   '<span class="remove-btn" title="Entfernen"><i class="bi bi-x"></i></span>';
 
-    var removeBtn = marker.querySelector(".remove-btn");
-    if (removeBtn) {
-        // Touch (iOS/iPad)
-        removeBtn.addEventListener("touchend", function(ev) {
-            ev.stopPropagation();
-            ev.preventDefault();
-            touchHandled = true;
-            removeMarker(tableId);
-            setTimeout(function() { touchHandled = false; }, 600);
+    var rb = m.querySelector(".remove-btn");
+    if (rb) {
+        rb.addEventListener("touchend", function(ev) {
+            ev.stopPropagation(); ev.preventDefault();
+            _touched = true;
+            _removeMarker(tableId);
+            setTimeout(function() { _touched = false; }, 600);
         }, { passive: false });
-        // Maus (Desktop)
-        removeBtn.addEventListener("click", function(ev) {
+        rb.addEventListener("click", function(ev) {
             ev.stopPropagation();
-            if (touchHandled) return;
-            removeMarker(tableId);
+            if (_touched) return;
+            _removeMarker(tableId);
         });
     }
-
-    canvas.appendChild(marker);
+    canvas.appendChild(m);
 }
 
-// -------------------------------------------------------
-// Marker entfernen
-// -------------------------------------------------------
-function removeMarker(tableId) {
-    delete positions[tableId];
+/* ----------------------------------------------------------
+   Marker entfernen
+   ---------------------------------------------------------- */
+function _removeMarker(tableId) {
+    delete _pos[tableId];
     var el = document.getElementById("marker-" + tableId);
     if (el) el.parentNode.removeChild(el);
-
-    var listItem = document.querySelector(
-        ".table-list-item[data-table-id=\"" + tableId + "\"]"
-    );
-    if (listItem) {
-        listItem.classList.remove("placed");
-        var textEnd = listItem.querySelector(".text-end");
-        if (textEnd) {
-            textEnd.innerHTML = "<span class=\"badge bg-secondary\">nicht gesetzt</span>";
-        }
+    var li = document.querySelector(".table-list-item[data-table-id='" + tableId + "']");
+    if (li) {
+        li.classList.remove("placed");
+        var te = li.querySelector(".text-end");
+        if (te) te.innerHTML = '<span class="badge bg-secondary">nicht gesetzt</span>';
     }
 }
 
-// -------------------------------------------------------
-// Hinweistext aktualisieren
-// -------------------------------------------------------
-function updatePlacingHint(tischnummer) {
-    var hint = document.getElementById("placingHint");
-    if (!hint) return;
-    if (tischnummer) {
-        hint.innerHTML =
-            "<i class=\"bi bi-cursor-fill text-warning me-1\"></i>" +
-            "<strong class=\"text-warning\">Tisch " + tischnummer + "</strong>" +
-            " \u2013 Klicken/Tippen auf Bild zum Platzieren";
-    } else {
-        hint.innerHTML =
-            "<i class=\"bi bi-cursor me-1\"></i>" +
-            "Tisch aus der Liste w\u00e4hlen, dann auf dem Bild platzieren";
-    }
+/* ----------------------------------------------------------
+   Hinweistext im Editor-Header
+   ---------------------------------------------------------- */
+function _hint(tischnummer) {
+    var h = document.getElementById("placingHint");
+    if (!h) return;
+    h.innerHTML = tischnummer
+        ? '<i class="bi bi-cursor-fill text-warning me-1"></i><strong class="text-warning">Tisch ' +
+          tischnummer + '</strong> &ndash; Klicken/Tippen auf Bild'
+        : '<i class="bi bi-cursor me-1"></i>Tisch aus Liste w&auml;hlen, dann auf Bild platzieren';
 }
 
-// -------------------------------------------------------
-// Positionen speichern
-// -------------------------------------------------------
+/* ----------------------------------------------------------
+   Positionen speichern  (onclick="savePositions()")
+   ---------------------------------------------------------- */
 function savePositions() {
-    var posArray = [];
-    var keys = Object.keys(positions);
+    var arr  = [];
+    var keys = Object.keys(_pos);
     for (var i = 0; i < keys.length; i++) {
-        posArray.push({
-            table_id: parseInt(keys[i], 10),
-            x: positions[keys[i]].x,
-            y: positions[keys[i]].y
-        });
+        arr.push({ table_id: parseInt(keys[i], 10), x: _pos[keys[i]].x, y: _pos[keys[i]].y });
     }
-
-    if (posArray.length === 0) {
-        alert("Keine Positionen zum Speichern.");
-        return;
-    }
+    if (arr.length === 0) { alert("Keine Positionen zum Speichern."); return; }
 
     var btn = document.getElementById("saveBtn");
     btn.disabled = true;
-    btn.innerHTML =
-        "<span class=\"spinner-border spinner-border-sm me-1\"></span>Speichern...";
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Speichern...';
 
     fetch("/api/save_table_positions.php", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            event_id:   EVENT_ID,
-            csrf_token: CSRF_TOKEN,
-            positions:  posArray
-        })
+        body: JSON.stringify({ event_id: _EVT, csrf_token: _CSRF, positions: arr })
     })
-    .then(function(res) { return res.json(); })
-    .then(function(data) {
-        if (data.ok) {
-            btn.innerHTML = "<i class=\"bi bi-check me-1\"></i>Gespeichert!";
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) {
+            btn.innerHTML = '<i class="bi bi-check me-1"></i>Gespeichert!';
             btn.className = "btn btn-sm btn-success";
             setTimeout(function() {
-                btn.innerHTML = "<i class=\"bi bi-save me-1\"></i>Positionen speichern";
+                btn.innerHTML = '<i class="bi bi-save me-1"></i>Positionen speichern';
                 btn.disabled  = false;
             }, 2000);
-        } else {
-            throw new Error(data.error || "Unbekannter Fehler");
-        }
+        } else { throw new Error(d.error || "Fehler"); }
     })
     .catch(function(err) {
-        alert("Fehler beim Speichern: " + err.message);
+        alert("Fehler: " + err.message);
         btn.disabled  = false;
-        btn.innerHTML = "<i class=\"bi bi-save me-1\"></i>Positionen speichern";
+        btn.innerHTML = '<i class="bi bi-save me-1"></i>Positionen speichern';
     });
 }
 
-// -------------------------------------------------------
-// Alle Positionen zurücksetzen
-// -------------------------------------------------------
+/* ----------------------------------------------------------
+   Alle Positionen zurücksetzen  (onclick="resetAllPositions()")
+   ---------------------------------------------------------- */
 function resetAllPositions() {
     if (!confirm("Alle Positionen wirklich zur\u00fccksetzen?")) return;
-
+    var arr = [];
+    for (var i = 0; i < _TBL.length; i++) arr.push({ table_id: _TBL[i].id, x: null, y: null });
     fetch("/api/save_table_positions.php", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            event_id:   EVENT_ID,
-            csrf_token: CSRF_TOKEN,
-            positions:  tische.map(function(t) {
-                return { table_id: t.id, x: null, y: null };
-            })
-        })
+        body: JSON.stringify({ event_id: _EVT, csrf_token: _CSRF, positions: arr })
     })
-    .then(function()  { location.reload(); })
+    .then(function() { location.reload(); })
     .catch(function() { location.reload(); });
 }
 
-// -------------------------------------------------------
-// Globale Exports (von inline-onclick im HTML gerufen)
-// -------------------------------------------------------
-window.selectTable       = selectTable;
-window.cancelPlacing     = cancelPlacing;
-window.savePositions     = savePositions;
-window.resetAllPositions = resetAllPositions;
-
-// -------------------------------------------------------
-// Start: DOM-Check (Script steht am Ende von <body>)
-// -------------------------------------------------------
+/* ----------------------------------------------------------
+   Start
+   ---------------------------------------------------------- */
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initEditor);
+    document.addEventListener("DOMContentLoaded", _initEditor);
 } else {
-    initEditor();
+    _initEditor();
 }
-
-})();
-</script>';
-
+</script>
+<?php
 include __DIR__ . '/../includes/footer.php';
 ?>
