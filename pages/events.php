@@ -226,7 +226,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <!-- Ticket-Preis -->
                         <div class="mt-3 p-2 bg-light rounded d-flex justify-content-between align-items-center">
                             <small class="text-muted"><i class="bi bi-ticket me-1"></i>Ticketpreis</small>
-                            <span class="fw-bold text-dark"><?= formatBetrag(TICKET_PREIS) ?></span>
+                            <span class="fw-bold text-dark"><?= formatBetrag((float)($event['preis'] ?? TICKET_PREIS)) ?></span>
                         </div>
 
                     </div>

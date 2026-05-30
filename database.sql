@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS `events` (
   `name` VARCHAR(255) NOT NULL,
   `beschreibung` TEXT DEFAULT NULL,
   `max_gaeste` INT NOT NULL,
+  `preis` DECIMAL(10,2) NOT NULL DEFAULT 15.00,
   `status` ENUM('planung','aktiv','abgerechnet') NOT NULL DEFAULT 'aktiv',
   `erstellt_am` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
@@ -128,9 +129,9 @@ INSERT INTO `users` (`vorname`, `nachname`, `email`, `passwort`, `zahlungsart`, 
 ('System', 'Administrator', 'admin@karneval.local', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'bar', 'admin', 1);
 
 -- Beispiel-Event
-INSERT INTO `events` (`datum`, `name`, `beschreibung`, `max_gaeste`, `status`) VALUES
-('2026-02-14', 'Karneval Eröffnungsfeier 2026', 'Die große Eröffnungsfeier unserer Karnevalssaison 2026. Freut euch auf Musik, Tanz und gute Laune!', 200, 'aktiv'),
-('2026-02-21', 'Rosenmontagsparty 2026', 'Die traditionelle Rosenmontagsparty mit Live-Band und Kostümwettbewerb.', 300, 'aktiv');
+INSERT INTO `events` (`datum`, `name`, `beschreibung`, `max_gaeste`, `preis`, `status`) VALUES
+('2026-02-14', 'Karneval Eröffnungsfeier 2026', 'Die große Eröffnungsfeier unserer Karnevalssaison 2026. Freut euch auf Musik, Tanz und gute Laune!', 200, 15.00, 'aktiv'),
+('2026-02-21', 'Rosenmontagsparty 2026', 'Die traditionelle Rosenmontagsparty mit Live-Band und Kostümwettbewerb.', 300, 18.00, 'aktiv');
 
 -- Tische für Event 1
 INSERT INTO `tables` (`event_id`, `tischnummer`, `max_plaetze`) VALUES

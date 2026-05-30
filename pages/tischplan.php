@@ -35,14 +35,22 @@ if ($eventId) {
     $selectedEvent = $stmt->fetch();
 }
 
-// Bereits reservierte Sitze des Benutzers für dieses Event
-$meineReservierungen = [];
+// Bereits reservierte Sitze des Benutzers – nur 'geplant' darf storniert werden
+// 'eingecheckt' (Seat-Status 'besetzt') zeigen wir informativ, aber nicht klickbar
+$meineReservierungen = []; // seat_ids mit Status 'geplant' (stornierbar)
+$meineEingecheckt    = []; // seat_ids mit Status 'eingecheckt' (nicht stornierbar)
 if ($eventId) {
     $stmt = $pdo->prepare(
-        'SELECT r.seat_id FROM reservations r WHERE r.user_id = ? AND r.event_id = ? AND r.status != "abgerechnet"'
+        'SELECT r.seat_id, r.status FROM reservations r WHERE r.user_id = ? AND r.event_id = ? AND r.status IN ("geplant","eingecheckt")'
     );
     $stmt->execute([$userId, $eventId]);
-    $meineReservierungen = array_column($stmt->fetchAll(), 'seat_id');
+    foreach ($stmt->fetchAll() as $row) {
+        if ($row['status'] === 'geplant') {
+            $meineReservierungen[] = (int)$row['seat_id'];
+        } else {
+            $meineEingecheckt[] = (int)$row['seat_id'];
+        }
+    }
 }
 
 $pageTitle = 'Tischplan';
@@ -221,13 +229,22 @@ include __DIR__ . '/../includes/navbar.php';
                             </div>
                             <div class="seats-grid">
                                 <?php foreach ($sitzeListe as $sitz):
-                                    $meinsFlag = in_array($sitz['id'], $meineReservierungen);
-                                    $statusClass = $meinsFlag ? 'mein-platz' : $sitz['status'];
+                                    // 'mein-platz' (blau, stornierbar) nur für 'geplant'-Reservierungen
+                                    $meinsGeplant    = in_array($sitz['id'], $meineReservierungen);
+                                    $meinsEingecheckt = in_array($sitz['id'], $meineEingecheckt);
+                                    if ($meinsGeplant) {
+                                        $statusClass = 'mein-platz';
+                                    } elseif ($meinsEingecheckt) {
+                                        $statusClass = 'besetzt'; // zeige besetzt, nicht klickbar
+                                    } else {
+                                        $statusClass = $sitz['status'];
+                                    }
                                     $clickable = ($statusClass === 'verfuegbar' || $statusClass === 'mein-platz');
                                     $title = "Tisch {$tisch['tischnummer']}, Platz {$sitz['sitzplatznummer']}";
-                                    if ($statusClass === 'mein-platz') $title .= ' (Meine Reservierung)';
+                                    if ($meinsGeplant)     $title .= ' (Meine Reservierung – klicken zum Stornieren)';
+                                    elseif ($meinsEingecheckt) $title .= ' (Eingecheckt – Stornierung nur durch Kassierer)';
                                     elseif ($sitz['status'] === 'reserviert') $title .= ' (Reserviert)';
-                                    elseif ($sitz['status'] === 'besetzt') $title .= ' (Besetzt)';
+                                    elseif ($sitz['status'] === 'besetzt')    $title .= ' (Besetzt)';
                                 ?>
                                 <button
                                     class="seat-btn <?= $statusClass ?>"
@@ -236,7 +253,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     data-tischnummer="<?= $tisch['tischnummer'] ?>"
                                     data-sitzplatznummer="<?= $sitz['sitzplatznummer'] ?>"
                                     data-status="<?= $sitz['status'] ?>"
-                                    data-mein-platz="<?= $meinsFlag ? '1' : '0' ?>"
+                                    data-mein-platz="<?= $meinsGeplant ? '1' : '0' ?>"
                                     <?= !$clickable ? 'disabled' : '' ?>
                                     title="<?= htmlspecialchars($title) ?>"
                                     onclick="<?= $clickable ? 'toggleSeat(this)' : '' ?>"
@@ -278,7 +295,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <div class="border-top pt-3">
                                     <div class="d-flex justify-content-between mb-1">
                                         <small>Preis pro Platz:</small>
-                                        <small class="fw-bold"><?= formatBetrag(TICKET_PREIS) ?></small>
+                                        <small class="fw-bold"><?= formatBetrag((float)($selectedEvent['preis'] ?? TICKET_PREIS)) ?></small>
                                     </div>
                                     <div class="d-flex justify-content-between mb-3">
                                         <small>Gesamt:</small>
@@ -354,7 +371,7 @@ include __DIR__ . '/../includes/navbar.php';
 <?php
 $extraScripts = <<<JS
 <script>
-const TICKET_PREIS = <?= TICKET_PREIS ?>;
+const TICKET_PREIS = <?= (float)($selectedEvent['preis'] ?? TICKET_PREIS) ?>;
 let selectedSeats = new Map(); // seat_id => {tischnummer, sitzplatznummer}
 
 function toggleSeat(btn) {

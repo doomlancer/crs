@@ -105,14 +105,16 @@ if (empty($seatIds) || count($seatIds) > 10) {
 try {
     $pdo->beginTransaction();
 
-    // Event prüfen (existiert, ist aktiv)
-    $stmtEvent = $pdo->prepare("SELECT id, status FROM events WHERE id = ? AND status = 'aktiv'");
+    // Event prüfen (existiert, ist aktiv) und Preis laden
+    $stmtEvent = $pdo->prepare("SELECT id, status, preis FROM events WHERE id = ? AND status = 'aktiv'");
     $stmtEvent->execute([$eventId]);
-    if (!$stmtEvent->fetch()) {
+    $eventData = $stmtEvent->fetch();
+    if (!$eventData) {
         $pdo->rollBack();
         setFlash('error', 'Dieses Event ist nicht mehr verfügbar.');
         redirect('/pages/events.php');
     }
+    $ticketPreis = (float)($eventData['preis'] ?? TICKET_PREIS);
 
     // Alle Sitze validieren – müssen zum Event gehören und verfügbar sein
     $placeholders = implode(',', array_fill(0, count($seatIds), '?'));
@@ -164,10 +166,10 @@ try {
     $buchungsnummern = [];
     foreach ($seatIds as $seatId) {
         $buchungsnummer = generateBuchungsnummer();
-        $stmtRes->execute([$userId, $eventId, $seatId, $buchungsnummer, TICKET_PREIS]);
+        $stmtRes->execute([$userId, $eventId, $seatId, $buchungsnummer, $ticketPreis]);
         $reservationId = (int)$pdo->lastInsertId();
 
-        $stmtPay->execute([$reservationId, $userZahlungsart, TICKET_PREIS, 'offen']);
+        $stmtPay->execute([$reservationId, $userZahlungsart, $ticketPreis, 'offen']);
         $stmtSeat->execute([$seatId]);
 
         $buchungsnummern[] = $buchungsnummer;

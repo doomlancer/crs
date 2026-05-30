@@ -25,24 +25,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Event erstellen ──────────────────────────────────────────────────────
     if ($postAction === 'create_event') {
-        $datum       = sanitize($_POST['datum'] ?? '');
-        $name        = sanitize($_POST['name'] ?? '');
+        $datum        = sanitize($_POST['datum'] ?? '');
+        $name         = sanitize($_POST['name'] ?? '');
         $beschreibung = trim($_POST['beschreibung'] ?? '');
-        $max_gaeste  = (int)($_POST['max_gaeste'] ?? 0);
-        $status      = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
-                       ? $_POST['status'] : 'planung';
+        $max_gaeste   = (int)($_POST['max_gaeste'] ?? 0);
+        $preis        = round((float)str_replace(',', '.', $_POST['preis'] ?? '0'), 2);
+        $status       = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
+                        ? $_POST['status'] : 'planung';
 
-        if (empty($datum))  $errors[] = 'Datum ist erforderlich.';
-        if (empty($name))   $errors[] = 'Name ist erforderlich.';
-        if ($max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
+        if (empty($datum))    $errors[] = 'Datum ist erforderlich.';
+        if (empty($name))     $errors[] = 'Name ist erforderlich.';
+        if ($max_gaeste < 1)  $errors[] = 'Max. Gäste muss mindestens 1 sein.';
+        if ($preis <= 0)      $errors[] = 'Ticket-Preis muss größer als 0 sein.';
 
         if (empty($errors)) {
             $stmt = $pdo->prepare(
-                'INSERT INTO events (datum, name, beschreibung, max_gaeste, status) VALUES (?,?,?,?,?)'
+                'INSERT INTO events (datum, name, beschreibung, max_gaeste, preis, status) VALUES (?,?,?,?,?,?)'
             );
-            $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status]);
+            $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status]);
             $newId = (int)$pdo->lastInsertId();
-            logAudit('CREATE', 'events', $newId, json_encode(compact('datum','name','status','max_gaeste')));
+            logAudit('CREATE', 'events', $newId, json_encode(compact('datum','name','status','max_gaeste','preis')));
             setFlash('success', 'Event "' . htmlspecialchars($name) . '" wurde erfolgreich erstellt.');
             redirect('/pages/admin_events.php');
         }
@@ -50,24 +52,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Event bearbeiten ─────────────────────────────────────────────────────
     if ($postAction === 'edit_event') {
-        $id          = (int)($_POST['event_id'] ?? 0);
-        $datum       = sanitize($_POST['datum'] ?? '');
-        $name        = sanitize($_POST['name'] ?? '');
+        $id           = (int)($_POST['event_id'] ?? 0);
+        $datum        = sanitize($_POST['datum'] ?? '');
+        $name         = sanitize($_POST['name'] ?? '');
         $beschreibung = trim($_POST['beschreibung'] ?? '');
-        $max_gaeste  = (int)($_POST['max_gaeste'] ?? 0);
-        $status      = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
-                       ? $_POST['status'] : 'planung';
+        $max_gaeste   = (int)($_POST['max_gaeste'] ?? 0);
+        $preis        = round((float)str_replace(',', '.', $_POST['preis'] ?? '0'), 2);
+        $status       = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
+                        ? $_POST['status'] : 'planung';
 
-        if (empty($datum))  $errors[] = 'Datum ist erforderlich.';
-        if (empty($name))   $errors[] = 'Name ist erforderlich.';
-        if ($max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
+        if (empty($datum))    $errors[] = 'Datum ist erforderlich.';
+        if (empty($name))     $errors[] = 'Name ist erforderlich.';
+        if ($max_gaeste < 1)  $errors[] = 'Max. Gäste muss mindestens 1 sein.';
+        if ($preis <= 0)      $errors[] = 'Ticket-Preis muss größer als 0 sein.';
 
         if (empty($errors) && $id > 0) {
             $stmt = $pdo->prepare(
-                'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, status=? WHERE id=?'
+                'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, preis=?, status=? WHERE id=?'
             );
-            $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status, $id]);
-            logAudit('UPDATE', 'events', $id, json_encode(compact('datum','name','status','max_gaeste')));
+            $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status, $id]);
+            logAudit('UPDATE', 'events', $id, json_encode(compact('datum','name','status','max_gaeste','preis')));
             setFlash('success', 'Event wurde erfolgreich aktualisiert.');
             redirect('/pages/admin_events.php');
         }
@@ -219,12 +223,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($errors)) {
             try {
                 $pdo->beginTransaction();
+                // Event-Preis laden
+                $evPreisRow = $pdo->prepare('SELECT preis FROM events WHERE id = ?');
+                $evPreisRow->execute([$event_id]);
+                $eventPreis = (float)($evPreisRow->fetchColumn() ?: TICKET_PREIS);
+
                 $buchungsnummer = generateBuchungsnummer();
                 $stmt = $pdo->prepare(
                     'INSERT INTO reservations (user_id, event_id, seat_id, buchungsnummer, status, preis)
                      VALUES (?,?,?,?,\'geplant\',?)'
                 );
-                $stmt->execute([$user_id, $event_id, $seat_id, $buchungsnummer, TICKET_PREIS]);
+                $stmt->execute([$user_id, $event_id, $seat_id, $buchungsnummer, $eventPreis]);
                 $resId = (int)$pdo->lastInsertId();
 
                 // Sitzplatz als reserviert markieren
@@ -233,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Zahlung erstellen
                 $pdo->prepare(
                     'INSERT INTO payments (reservation_id, zahlungsart, status, betrag) VALUES (?,?,?,?)'
-                )->execute([$resId, $zahlungsart, $pay_status, TICKET_PREIS]);
+                )->execute([$resId, $zahlungsart, $pay_status, $eventPreis]);
 
                 $pdo->commit();
                 logAudit('CREATE', 'reservations', $resId,
@@ -497,6 +506,11 @@ include __DIR__ . '/../includes/navbar.php';
                            value="<?= (int)$editEvent['max_gaeste'] ?>" required>
                 </div>
                 <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Ticket-Preis (€) <span class="text-danger">*</span></label>
+                    <input type="number" name="preis" class="form-control" min="0.01" step="0.01"
+                           value="<?= number_format((float)($editEvent['preis'] ?? 15.00), 2, '.', '') ?>" required>
+                </div>
+                <div class="col-md-1">
                     <label class="form-label fw-semibold small">Status</label>
                     <select name="status" class="form-select">
                         <?php foreach (['planung','aktiv','abgerechnet'] as $s): ?>
@@ -551,6 +565,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <th>Datum</th>
                             <th>Name</th>
                             <th>Max. Gäste</th>
+                            <th>Preis</th>
                             <th>Tische</th>
                             <th>Sitze</th>
                             <th>Belegt</th>
@@ -580,6 +595,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <?php endif; ?>
                         </td>
                         <td><?= (int)$ev['max_gaeste'] ?></td>
+                        <td class="fw-bold text-success"><?= formatBetrag((float)($ev['preis'] ?? 0)) ?></td>
                         <td><span class="badge bg-secondary"><?= (int)$ev['tische_anzahl'] ?></span></td>
                         <td><?= $sitze ?></td>
                         <td>
@@ -741,7 +757,11 @@ include __DIR__ . '/../includes/navbar.php';
                             <label class="form-label fw-semibold small">Max. Gäste <span class="text-danger">*</span></label>
                             <input type="number" name="max_gaeste" class="form-control" min="1" value="200" required>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold small">Ticket-Preis (€) <span class="text-danger">*</span></label>
+                            <input type="number" name="preis" class="form-control" min="0.01" step="0.01" value="15.00" required>
+                        </div>
+                        <div class="col-md-2">
                             <label class="form-label fw-semibold small">Status</label>
                             <select name="status" class="form-select">
                                 <option value="planung">In Planung</option>
