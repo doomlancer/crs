@@ -28,7 +28,7 @@ if (!$user) {
 
 // Aktive Reservierungen zählen
 $stmtRes = $pdo->prepare(
-    "SELECT COUNT(*) FROM reservations WHERE user_id = ? AND status != 'storniert'"
+    "SELECT COUNT(*) FROM reservations WHERE user_id = ? AND status IN ('geplant','eingecheckt')"
 );
 $stmtRes->execute([$userId]);
 $aktiveReservierungen = (int)$stmtRes->fetchColumn();

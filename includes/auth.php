@@ -18,7 +18,7 @@ function loginUser(string $email, string $passwort): true|string {
 
     // Benutzer anhand der E-Mail suchen
     $stmt = $pdo->prepare(
-        'SELECT id, vorname, nachname, email, passwort, rolle, aktiv, login_versuche, gesperrt_bis
+        'SELECT id, vorname, nachname, email, passwort, zahlungsart, rolle, aktiv, login_versuche, gesperrt_bis
          FROM users WHERE email = ?'
     );
     $stmt->execute([strtolower(trim($email))]);
@@ -63,11 +63,12 @@ function loginUser(string $email, string $passwort): true|string {
     // Session-ID erneuern (Session Fixation verhindern)
     session_regenerate_id(true);
 
-    $_SESSION['user_id']  = $user['id'];
-    $_SESSION['vorname']  = $user['vorname'];
-    $_SESSION['nachname'] = $user['nachname'];
-    $_SESSION['email']    = $user['email'];
-    $_SESSION['rolle']    = $user['rolle'];
+    $_SESSION['user_id']     = $user['id'];
+    $_SESSION['vorname']     = $user['vorname'];
+    $_SESSION['nachname']    = $user['nachname'];
+    $_SESSION['email']       = $user['email'];
+    $_SESSION['rolle']       = $user['rolle'];
+    $_SESSION['zahlungsart'] = $user['zahlungsart'];
 
     logAudit('LOGIN', 'users', $user['id'], 'Erfolgreicher Login');
 

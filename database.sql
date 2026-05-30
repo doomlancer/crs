@@ -120,8 +120,9 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================
--- Standard-Admin anlegen (Passwort: Admin1234!)
--- bcrypt hash für 'Admin1234!'
+-- Standard-Admin anlegen (Passwort: password)
+-- bcrypt hash für 'password' (cost 12) – BITTE SOFORT NACH SETUP ÄNDERN!
+-- Generiere einen neuen Hash mit: php -r "echo password_hash('DeinPasswort', PASSWORD_BCRYPT, ['cost'=>12]);"
 -- =====================
 INSERT INTO `users` (`vorname`, `nachname`, `email`, `passwort`, `zahlungsart`, `rolle`, `aktiv`) VALUES
 ('System', 'Administrator', 'admin@karneval.local', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'bar', 'admin', 1);

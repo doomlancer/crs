@@ -57,14 +57,12 @@ if ($action === 'cancel') {
             redirect('/pages/meine_reservierungen.php');
         }
 
-        // Reservierung stornieren
-        $pdo->prepare('UPDATE reservations SET status = "abgerechnet" WHERE id = ?')
-            ->execute([$reservation['id']]);
-        // Sitzplatz freigeben
+        // Reservierung löschen (Sitz wird via FK-Cascade-Free freigegeben nach Seat-Update)
         $pdo->prepare('UPDATE seats SET status = "verfuegbar" WHERE id = ?')
             ->execute([$reservation['seat_id']]);
-        // Zahlung stornieren
-        $pdo->prepare('UPDATE payments SET status = "storniert" WHERE reservation_id = ?')
+        $pdo->prepare('DELETE FROM payments WHERE reservation_id = ?')
+            ->execute([$reservation['id']]);
+        $pdo->prepare('DELETE FROM reservations WHERE id = ?')
             ->execute([$reservation['id']]);
 
         logAudit('STORNIERUNG', 'reservations', $reservation['id'], "Stornierung durch Benutzer");
@@ -169,8 +167,7 @@ try {
         $stmtRes->execute([$userId, $eventId, $seatId, $buchungsnummer, TICKET_PREIS]);
         $reservationId = (int)$pdo->lastInsertId();
 
-        $payStatus = $userZahlungsart === 'bar' ? 'offen' : 'offen';
-        $stmtPay->execute([$reservationId, $userZahlungsart, TICKET_PREIS, $payStatus]);
+        $stmtPay->execute([$reservationId, $userZahlungsart, TICKET_PREIS, 'offen']);
         $stmtSeat->execute([$seatId]);
 
         $buchungsnummern[] = $buchungsnummer;
