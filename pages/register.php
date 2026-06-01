@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Registrieren';
+$pageTitle = __('register_title');
 $bodyClass = 'auth-page bg-dark';
 $extraHead = '';
 
@@ -115,7 +115,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-person-plus me-2"></i>Konto erstellen
+                        <i class="bi bi-person-plus me-2"></i><?= __('register_subtitle') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -182,7 +182,7 @@ include __DIR__ . '/../includes/header.php';
                         <!-- E-Mail -->
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
-                                <i class="bi bi-envelope me-1"></i>E-Mail-Adresse <span class="text-danger">*</span>
+                                <i class="bi bi-envelope me-1"></i><?= __('lbl_email') ?> <span class="text-danger">*</span>
                             </label>
                             <input
                                 type="email"
@@ -229,7 +229,7 @@ include __DIR__ . '/../includes/header.php';
                             </div>
                             <div class="col-sm-6">
                                 <label for="passwort2" class="form-label fw-semibold">
-                                    Passwort bestätigen <span class="text-danger">*</span>
+                                    <?= __('lbl_confirm_password') ?> <span class="text-danger">*</span>
                                 </label>
                                 <div class="input-group">
                                     <input
@@ -259,7 +259,7 @@ include __DIR__ . '/../includes/header.php';
                         <!-- Zahlungsart -->
                         <div class="mb-3">
                             <label for="zahlungsart" class="form-label fw-semibold">
-                                <i class="bi bi-credit-card me-1"></i>Bevorzugte Zahlungsart <span class="text-danger">*</span>
+                                <i class="bi bi-credit-card me-1"></i><?= __('lbl_payment_method') ?> <span class="text-danger">*</span>
                             </label>
                             <select
                                 id="zahlungsart"
@@ -283,8 +283,7 @@ include __DIR__ . '/../includes/header.php';
                         <!-- Adresse (optional) -->
                         <div class="mb-4">
                             <label for="adresse" class="form-label fw-semibold">
-                                <i class="bi bi-geo-alt me-1"></i>Adresse
-                                <span class="text-muted fw-normal">(optional)</span>
+                                <i class="bi bi-geo-alt me-1"></i><?= __('lbl_address') ?>
                             </label>
                             <input
                                 type="text"
@@ -326,15 +325,15 @@ include __DIR__ . '/../includes/header.php';
 
                         <div class="d-grid">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-person-check me-2"></i>Konto erstellen
+                                <i class="bi bi-person-check me-2"></i><?= __('btn_register') ?>
                             </button>
                         </div>
                     </form>
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
-                    <span class="text-muted">Bereits registriert?</span>
+                    <span class="text-muted"><?= __('have_account') ?></span>
                     <a href="/pages/login.php" class="text-warning fw-semibold text-decoration-none ms-1">
-                        Jetzt anmelden <i class="bi bi-arrow-right"></i>
+                        <?= __('btn_login') ?> <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
             </div>

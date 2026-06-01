@@ -179,7 +179,7 @@ $zahlungsarten = [
     'paypal'       => 'PayPal',
 ];
 
-$pageTitle = 'Mein Profil';
+$pageTitle = __('page_profile');
 $bodyClass = 'bg-light';
 $extraHead = '';
 
@@ -194,16 +194,16 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row align-items-center mb-4">
             <div class="col">
                 <h1 class="fw-bold mb-1">
-                    <i class="bi bi-person-circle text-warning me-2"></i>Mein Profil
+                    <i class="bi bi-person-circle text-warning me-2"></i><?= __('page_profile') ?>
                 </h1>
                 <p class="text-muted mb-0">
-                    Verwalten Sie Ihre persönlichen Daten und Einstellungen.
+                    <?= __('profile_subtitle') ?>
                 </p>
             </div>
             <div class="col-auto">
                 <a href="/pages/meine_reservierungen.php" class="btn btn-outline-warning">
                     <i class="bi bi-ticket-perforated me-1"></i>
-                    Meine Reservierungen
+                    <?= __('nav_my_bookings') ?>
                     <?php if ($aktiveReservierungen > 0): ?>
                         <span class="badge bg-warning text-dark ms-1"><?= $aktiveReservierungen ?></span>
                     <?php endif; ?>
@@ -306,7 +306,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header bg-warning text-dark border-0 py-3">
                         <h5 class="mb-0 fw-bold">
-                            <i class="bi bi-pencil-square me-2"></i>Persönliche Daten
+                            <i class="bi bi-pencil-square me-2"></i><?= __('lbl_personal_data') ?>
                         </h5>
                     </div>
                     <div class="card-body p-4">
@@ -395,7 +395,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Zahlungsart -->
                                 <div class="col-sm-6">
                                     <label for="zahlungsart" class="form-label fw-semibold">
-                                        <i class="bi bi-credit-card me-1"></i>Zahlungsart <span class="text-danger">*</span>
+                                        <i class="bi bi-credit-card me-1"></i><?= __('lbl_payment_method') ?> <span class="text-danger">*</span>
                                     </label>
                                     <select
                                         id="zahlungsart"
@@ -416,8 +416,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Adresse (optional) -->
                                 <div class="col-sm-6">
                                     <label for="adresse" class="form-label fw-semibold">
-                                        <i class="bi bi-geo-alt me-1"></i>Adresse
-                                        <span class="text-muted fw-normal small">(optional)</span>
+                                        <i class="bi bi-geo-alt me-1"></i><?= __('lbl_address') ?>
                                     </label>
                                     <input
                                         type="text"
@@ -434,8 +433,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Telefon (optional) -->
                                 <div class="col-sm-6">
                                     <label for="telefon" class="form-label fw-semibold">
-                                        <i class="bi bi-telephone me-1"></i>Telefon
-                                        <span class="text-muted fw-normal small">(optional)</span>
+                                        <i class="bi bi-telephone me-1"></i><?= __('lbl_phone') ?>
                                     </label>
                                     <input
                                         type="tel"
@@ -452,8 +450,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Geburtsdatum (optional) -->
                                 <div class="col-sm-6">
                                     <label for="geburtsdatum" class="form-label fw-semibold">
-                                        <i class="bi bi-calendar-date me-1"></i>Geburtsdatum
-                                        <span class="text-muted fw-normal small">(optional)</span>
+                                        <i class="bi bi-calendar-date me-1"></i><?= __('lbl_birthday') ?>
                                     </label>
                                     <input
                                         type="date"
@@ -475,7 +472,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Submit -->
                                 <div class="col-12">
                                     <button type="submit" class="btn btn-warning fw-bold px-4">
-                                        <i class="bi bi-check-lg me-2"></i>Daten speichern
+                                        <i class="bi bi-check-lg me-2"></i><?= __('btn_save') ?>
                                     </button>
                                 </div>
 
@@ -491,7 +488,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-dark text-white border-0 py-3">
                         <h5 class="mb-0 fw-bold">
-                            <i class="bi bi-key me-2"></i>Passwort ändern
+                            <i class="bi bi-key me-2"></i><?= __('lbl_change_password') ?>
                         </h5>
                     </div>
                     <div class="card-body p-4">
@@ -526,7 +523,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Aktuelles Passwort -->
                                 <div class="col-12">
                                     <label for="altes_passwort" class="form-label fw-semibold">
-                                        <i class="bi bi-lock me-1"></i>Aktuelles Passwort <span class="text-danger">*</span>
+                                        <i class="bi bi-lock me-1"></i><?= __('lbl_current_password') ?> <span class="text-danger">*</span>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -549,7 +546,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Neues Passwort -->
                                 <div class="col-sm-6">
                                     <label for="neues_passwort" class="form-label fw-semibold">
-                                        <i class="bi bi-lock-fill me-1"></i>Neues Passwort <span class="text-danger">*</span>
+                                        <i class="bi bi-lock-fill me-1"></i><?= __('lbl_new_password') ?> <span class="text-danger">*</span>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -582,7 +579,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Neues Passwort bestätigen -->
                                 <div class="col-sm-6">
                                     <label for="neues_passwort2" class="form-label fw-semibold">
-                                        Passwort bestätigen <span class="text-danger">*</span>
+                                        <?= __('lbl_confirm_password') ?> <span class="text-danger">*</span>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -616,7 +613,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Submit -->
                                 <div class="col-12">
                                     <button type="submit" class="btn btn-dark fw-bold px-4">
-                                        <i class="bi bi-key me-2"></i>Passwort ändern
+                                        <i class="bi bi-key me-2"></i><?= __('lbl_change_password') ?>
                                     </button>
                                 </div>
 
@@ -632,7 +629,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm border-danger mt-4">
                     <div class="card-header bg-danger text-white border-0 py-3">
                         <h5 class="mb-0 fw-bold">
-                            <i class="bi bi-trash me-2"></i>Konto löschen
+                            <i class="bi bi-trash me-2"></i><?= __('lbl_delete_account') ?>
                         </h5>
                     </div>
                     <div class="card-body p-4">
@@ -642,7 +639,7 @@ include __DIR__ . '/../includes/navbar.php';
                         </p>
                         <button type="button" class="btn btn-outline-danger fw-bold"
                                 data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
-                            <i class="bi bi-trash me-2"></i>Konto unwiderruflich löschen
+                            <i class="bi bi-trash me-2"></i><?= __('lbl_delete_account') ?>
                         </button>
                     </div>
                 </div>
@@ -679,7 +676,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <i class="bi bi-trash me-2"></i>Ja, Konto löschen
                         </button>
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                            Abbrechen
+                            <?= __('btn_close') ?>
                         </button>
                     </div>
                 </form>

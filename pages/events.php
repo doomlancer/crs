@@ -30,7 +30,7 @@ $stmt = $pdo->prepare(
 $stmt->execute();
 $events = $stmt->fetchAll();
 
-$pageTitle = 'Veranstaltungen';
+$pageTitle = __('page_events');
 $bodyClass = 'bg-light';
 $extraHead = '';
 
@@ -45,12 +45,12 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row align-items-center mb-4">
             <div class="col">
                 <h1 class="fw-bold mb-1">
-                    <i class="bi bi-calendar-event text-warning me-2"></i>Veranstaltungen
+                    <i class="bi bi-calendar-event text-warning me-2"></i><?= __('page_events') ?>
                 </h1>
                 <p class="text-muted mb-0">
-                    Alle verfügbaren Karnevalsveranstaltungen auf einen Blick.
+                    <?= __('events_subtitle') ?>
                     <?php if (!isLoggedIn()): ?>
-                        <a href="/pages/register.php" class="text-warning fw-semibold">Registrieren Sie sich</a>,
+                        <a href="/pages/register.php" class="text-warning fw-semibold"><?= __('nav_register') ?></a>,
                         um Plätze zu reservieren.
                     <?php endif; ?>
                 </p>
@@ -58,7 +58,7 @@ include __DIR__ . '/../includes/navbar.php';
             <?php if (isLoggedIn()): ?>
             <div class="col-auto">
                 <a href="/pages/meine_reservierungen.php" class="btn btn-outline-warning">
-                    <i class="bi bi-ticket-perforated me-1"></i>Meine Reservierungen
+                    <i class="bi bi-ticket-perforated me-1"></i><?= __('nav_my_bookings') ?>
                 </a>
             </div>
             <?php endif; ?>
@@ -71,7 +71,7 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="card border-0 shadow-sm text-center py-5">
             <div class="card-body">
                 <i class="bi bi-calendar-x display-3 text-muted mb-3 d-block"></i>
-                <h4 class="text-muted">Keine Veranstaltungen geplant</h4>
+                <h4 class="text-muted"><?= __('msg_no_events') ?></h4>
                 <p class="text-muted mb-0">
                     Aktuell sind keine Veranstaltungen eingetragen. Schauen Sie später wieder vorbei!
                 </p>
@@ -109,7 +109,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm text-center h-100">
                     <div class="card-body py-3">
                         <div class="display-6 fw-bold text-primary"><?= $totalSeats ?></div>
-                        <div class="small text-muted">Plätze gesamt</div>
+                        <div class="small text-muted"><?= __('lbl_seats_total') ?></div>
                     </div>
                 </div>
             </div>
@@ -190,7 +190,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <div class="mt-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <span class="small fw-semibold text-muted">
-                                    <i class="bi bi-people me-1"></i>Auslastung
+                                    <i class="bi bi-people me-1"></i><?= __('lbl_occupancy') ?>
                                 </span>
                                 <div class="d-flex align-items-center gap-2">
                                     <span class="small text-muted"><?= $prozent ?>%</span>
@@ -251,7 +251,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <?php elseif (isLoggedIn()): ?>
                             <a href="/pages/tischplan.php?event_id=<?= (int)$event['id'] ?>"
                                class="btn btn-warning w-100 fw-semibold">
-                                <i class="bi bi-grid-3x3 me-1"></i>Reservieren
+                                <i class="bi bi-grid-3x3 me-1"></i><?= __('btn_to_seating') ?>
                             </a>
 
                         <?php else: ?>

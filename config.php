@@ -114,3 +114,6 @@ if (isset($_SESSION['letzte_aktivitaet'])) {
     }
 }
 $_SESSION['letzte_aktivitaet'] = time();
+
+// Load language system on every page
+require_once __DIR__ . '/includes/lang.php';

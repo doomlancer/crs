@@ -134,7 +134,7 @@ if ($step === 'reset') {
     $resetValid = true;
 }
 
-$pageTitle = 'Passwort zurücksetzen';
+$pageTitle = __('page_password_reset');
 $bodyClass = 'auth-page bg-dark';
 $extraHead = '';
 
@@ -155,7 +155,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-key me-2"></i>Passwort zurücksetzen
+                        <i class="bi bi-key me-2"></i><?= __('page_password_reset') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -173,14 +173,14 @@ include __DIR__ . '/../includes/header.php';
                     <?php if ($step === 'request'): ?>
                     <!-- Step 1: E-Mail-Adresse eingeben -->
                     <p class="text-muted mb-4">
-                        Geben Sie Ihre E-Mail-Adresse ein. Wir senden Ihnen einen Link zum Zurücksetzen des Passworts.
+                        <?= __('lbl_enter_email') ?>
                     </p>
                     <form method="POST" novalidate>
                         <?= csrfField() ?>
                         <input type="hidden" name="step" value="request">
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
-                                <i class="bi bi-envelope me-1"></i>E-Mail-Adresse
+                                <i class="bi bi-envelope me-1"></i><?= __('lbl_email') ?>
                             </label>
                             <input type="email" id="email" name="email"
                                    class="form-control form-control-lg"
@@ -189,21 +189,21 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-envelope me-2"></i>Reset-Link senden
+                                <i class="bi bi-envelope me-2"></i><?= __('btn_send_reset') ?>
                             </button>
                         </div>
                     </form>
 
                     <?php elseif ($step === 'reset' && $resetValid): ?>
                     <!-- Step 2: Neues Passwort eingeben -->
-                    <p class="text-muted mb-4">Geben Sie Ihr neues Passwort ein.</p>
+                    <p class="text-muted mb-4"><?= __('lbl_new_password_title') ?></p>
                     <form method="POST" novalidate id="resetForm">
                         <?= csrfField() ?>
                         <input type="hidden" name="step" value="reset">
                         <input type="hidden" name="token" value="<?= htmlspecialchars($token ?: ($_POST['token'] ?? '')) ?>">
                         <div class="mb-3">
                             <label for="passwort" class="form-label fw-semibold">
-                                <i class="bi bi-lock me-1"></i>Neues Passwort
+                                <i class="bi bi-lock me-1"></i><?= __('lbl_new_password') ?>
                             </label>
                             <div class="input-group">
                                 <input type="password" id="passwort" name="passwort"
@@ -216,7 +216,7 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="mb-3">
                             <label for="passwort2" class="form-label fw-semibold">
-                                Passwort bestätigen
+                                <?= __('lbl_confirm_password') ?>
                             </label>
                             <div class="input-group">
                                 <input type="password" id="passwort2" name="passwort2"
@@ -229,7 +229,7 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-check-lg me-2"></i>Passwort setzen
+                                <i class="bi bi-check-lg me-2"></i><?= __('btn_set_password') ?>
                             </button>
                         </div>
                     </form>
@@ -238,7 +238,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
                     <a href="/pages/login.php" class="text-muted text-decoration-none small">
-                        <i class="bi bi-arrow-left me-1"></i>Zurück zum Login
+                        <i class="bi bi-arrow-left me-1"></i><?= __('lbl_back_to_login') ?>
                     </a>
                 </div>
             </div>

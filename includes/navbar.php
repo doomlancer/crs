@@ -91,7 +91,7 @@ $currentLang = $_SESSION['lang'] ?? 'de';
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/pages/admin_settings.php">
-                            <i class="bi bi-sliders"></i> Einstellungen
+                            <i class="bi bi-sliders"></i> <?= __('nav_settings') ?>
                         </a></li>
                     </ul>
                 </li>

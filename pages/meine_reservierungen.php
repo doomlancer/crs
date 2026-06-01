@@ -47,7 +47,7 @@ $stmtWl = $pdo->prepare(
 $stmtWl->execute([$userId]);
 $warteliste = $stmtWl->fetchAll();
 
-$pageTitle = 'Meine Reservierungen';
+$pageTitle = __('page_my_bookings_title');
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';
 ?>
@@ -59,9 +59,9 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row mb-4">
             <div class="col-12">
                 <h2 class="fw-bold">
-                    <i class="bi bi-ticket-perforated text-warning me-2"></i>Meine Reservierungen
+                    <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('page_my_bookings_title') ?>
                 </h2>
-                <p class="text-muted">Alle Ihre Buchungen im Überblick</p>
+                <p class="text-muted"><?= __('events_subtitle') ?></p>
             </div>
         </div>
 
@@ -105,10 +105,10 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="card border-0 shadow-sm">
             <div class="card-body text-center py-5">
                 <i class="bi bi-calendar-x display-3 text-muted d-block mb-3"></i>
-                <h5 class="text-muted">Noch keine Reservierungen</h5>
-                <p class="text-muted">Sie haben noch keine Plätze reserviert.</p>
+                <h5 class="text-muted"><?= __('lbl_no_bookings') ?></h5>
+                <p class="text-muted"><?= __('lbl_no_bookings') ?></p>
                 <a href="/pages/events.php" class="btn btn-warning">
-                    <i class="bi bi-calendar-event me-2"></i>Events entdecken
+                    <i class="bi bi-calendar-event me-2"></i><?= __('page_events') ?>
                 </a>
             </div>
         </div>
@@ -121,15 +121,15 @@ include __DIR__ . '/../includes/navbar.php';
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-dark">
                             <tr>
-                                <th>Buchungsnr.</th>
-                                <th>Veranstaltung</th>
-                                <th>Datum</th>
-                                <th>Sitzplatz</th>
-                                <th>Zahlungsart</th>
-                                <th>Betrag</th>
-                                <th>Buchungsstatus</th>
-                                <th>Zahlungsstatus</th>
-                                <th>Aktionen</th>
+                                <th><?= __('lbl_booking_nr') ?></th>
+                                <th><?= __('lbl_event') ?></th>
+                                <th><?= __('lbl_date') ?></th>
+                                <th><?= __('lbl_seat_nr') ?></th>
+                                <th><?= __('lbl_payment') ?></th>
+                                <th><?= __('lbl_price') ?></th>
+                                <th><?= __('lbl_status') ?></th>
+                                <th><?= __('lbl_payment_status') ?></th>
+                                <th><?= __('lbl_status') ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -165,17 +165,17 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td>
                                     <div class="d-flex gap-1 flex-wrap">
                                         <a href="/pages/buchung_detail.php?buchungsnummer=<?= urlencode($res['buchungsnummer']) ?>"
-                                           class="btn btn-outline-warning btn-sm" title="Ticket anzeigen">
+                                           class="btn btn-outline-warning btn-sm" title="<?= __('btn_view_ticket') ?>">
                                             <i class="bi bi-qr-code"></i>
                                         </a>
                                         <?php if ($res['status'] === 'geplant'): ?>
                                         <form method="POST" action="/api/reserve_seat.php"
-                                              onsubmit="return confirm('Möchten Sie diese Reservierung wirklich stornieren?')">
+                                              onsubmit="return confirm('<?= addslashes(__('confirm_cancel')) ?>')">
                                             <?= csrfField() ?>
                                             <input type="hidden" name="action" value="cancel">
                                             <input type="hidden" name="event_id" value="">
                                             <input type="hidden" name="reservation_id" value="<?= $res['id'] ?>">
-                                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm" title="<?= __('btn_cancel_booking') ?>">
                                                 <i class="bi bi-x-circle"></i>
                                             </button>
                                         </form>
@@ -188,7 +188,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td colspan="9" class="py-1">
                                     <small class="text-muted">
                                         <i class="bi bi-clock me-1"></i>
-                                        Reserviert am: <?= date('d.m.Y H:i', strtotime($res['erstellt_am'])) ?> Uhr
+                                        <?= __('lbl_booked_at') ?>: <?= date('d.m.Y H:i', strtotime($res['erstellt_am'])) ?> Uhr
                                         <?php if ($res['zahlungsart'] === 'ueberweisung' && $res['payment_status'] === 'offen'): ?>
                                         | <span class="text-warning fw-bold">
                                             <i class="bi bi-exclamation-triangle me-1"></i>
@@ -212,18 +212,18 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="card border-0 shadow-sm mt-4">
             <div class="card-header bg-dark text-white d-flex align-items-center border-0 py-3">
                 <i class="bi bi-hourglass-split text-warning me-2"></i>
-                <span class="fw-semibold">Meine Wartelisten-Einträge</span>
+                <span class="fw-semibold"><?= __('lbl_waitinglist') ?></span>
                 <span class="badge bg-warning text-dark ms-2"><?= count($warteliste) ?></span>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-secondary">
                         <tr>
-                            <th>Veranstaltung</th>
-                            <th>Datum</th>
-                            <th>Status</th>
-                            <th>Eingetragen am</th>
-                            <th>Aktion</th>
+                            <th><?= __('lbl_event') ?></th>
+                            <th><?= __('lbl_date') ?></th>
+                            <th><?= __('lbl_status') ?></th>
+                            <th><?= __('lbl_booked_at') ?></th>
+                            <th><?= __('lbl_status') ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -255,11 +255,11 @@ include __DIR__ . '/../includes/navbar.php';
                                     <?php if ($wl['status'] === 'benachrichtigt'): ?>
                                     <a href="/pages/tischplan.php?event_id=<?= $wl['event_id'] ?>"
                                        class="btn btn-success btn-sm fw-semibold">
-                                        <i class="bi bi-grid-3x3 me-1"></i>Platz wählen
+                                        <i class="bi bi-grid-3x3 me-1"></i><?= __('btn_choose_seat') ?>
                                     </a>
                                     <?php endif; ?>
                                     <form method="POST" action="/api/leave_waitinglist.php"
-                                          onsubmit="return confirm('Von der Warteliste entfernen?')">
+                                          onsubmit="return confirm('<?= addslashes(__('btn_leave_waitinglist')) ?>')" >
                                         <?= csrfField() ?>
                                         <input type="hidden" name="waitinglist_id" value="<?= $wl['id'] ?>">
                                         <button type="submit" class="btn btn-outline-danger btn-sm">

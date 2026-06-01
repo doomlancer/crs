@@ -52,7 +52,7 @@ if (!empty($_SESSION['timeout_message'])) {
     unset($_SESSION['timeout_message']);
 }
 
-$pageTitle  = 'Anmelden';
+$pageTitle  = __('login_title');
 $bodyClass  = 'auth-page bg-dark';
 $extraHead  = '';
 
@@ -75,7 +75,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Anmelden
+                        <i class="bi bi-box-arrow-in-right me-2"></i><?= __('login_title') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -128,7 +128,7 @@ include __DIR__ . '/../includes/header.php';
 
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
-                                <i class="bi bi-envelope me-1"></i>E-Mail-Adresse
+                                <i class="bi bi-envelope me-1"></i><?= __('lbl_email') ?>
                             </label>
                             <input
                                 type="email"
@@ -146,7 +146,7 @@ include __DIR__ . '/../includes/header.php';
                         <div class="mb-3">
                             <div class="d-flex justify-content-between align-items-center">
                                 <label for="passwort" class="form-label fw-semibold mb-0">
-                                    <i class="bi bi-lock me-1"></i>Passwort
+                                    <i class="bi bi-lock me-1"></i><?= __('lbl_password') ?>
                                 </label>
                             </div>
                             <div class="input-group mt-1">
@@ -173,20 +173,20 @@ include __DIR__ . '/../includes/header.php';
 
                         <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-box-arrow-in-right me-2"></i>Anmelden
+                                <i class="bi bi-box-arrow-in-right me-2"></i><?= __('btn_login') ?>
                             </button>
                         </div>
                         <div class="text-center mt-3">
                             <a href="/pages/passwort_reset.php" class="text-muted small text-decoration-none">
-                                <i class="bi bi-key me-1"></i>Passwort vergessen?
+                                <i class="bi bi-key me-1"></i><?= __('forgot_password') ?>
                             </a>
                         </div>
                     </form>
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
-                    <span class="text-muted">Noch kein Konto?</span>
+                    <span class="text-muted"><?= __('no_account') ?></span>
                     <a href="/pages/register.php" class="text-warning fw-semibold text-decoration-none ms-1">
-                        Jetzt registrieren <i class="bi bi-arrow-right"></i>
+                        <?= __('nav_register') ?> <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
             </div>

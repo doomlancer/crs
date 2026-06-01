@@ -56,7 +56,7 @@ $hmacToken  = generateHmacToken($buchung['buchungsnummer']);
 $qrUrl      = APP_URL . '/api/verify_checkin.php?token=' . urlencode($hmacToken) . '&nr=' . urlencode($buchung['buchungsnummer']);
 $qrHtml     = generateQrCode($qrUrl, 220);
 
-$pageTitle = 'Ticket – ' . $buchung['buchungsnummer'];
+$pageTitle = __('page_booking_detail') . ' – ' . $buchung['buchungsnummer'];
 $bodyClass = 'bg-light';
 $extraHead = '';
 
@@ -100,7 +100,7 @@ include __DIR__ . '/../includes/navbar.php';
             <div class="d-flex justify-content-between align-items-center mb-4 no-print">
                 <a href="<?= $isPrivileged ? '/pages/kassierer_guestlist.php' : '/pages/meine_reservierungen.php' ?>"
                    class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left me-1"></i>Zurück
+                    <i class="bi bi-arrow-left me-1"></i><?= __('btn_back') ?>
                 </a>
                 <div class="d-flex gap-2">
                     <?php if ($buchung['status'] === 'geplant' && $isPrivileged): ?>
@@ -110,7 +110,7 @@ include __DIR__ . '/../includes/navbar.php';
                     </a>
                     <?php endif; ?>
                     <button onclick="window.print()" class="btn btn-warning fw-semibold">
-                        <i class="bi bi-printer me-2"></i>Drucken / PDF
+                        <i class="bi bi-printer me-2"></i><?= __('btn_print') ?>
                     </button>
                 </div>
             </div>
@@ -146,18 +146,18 @@ include __DIR__ . '/../includes/navbar.php';
                         <!-- Linke Seite: Details -->
                         <div class="col-md-7">
                             <h5 class="fw-bold text-warning border-bottom border-warning pb-2 mb-3">
-                                <i class="bi bi-ticket-perforated me-2"></i>Buchungsdetails
+                                <i class="bi bi-ticket-perforated me-2"></i><?= __('page_booking_detail') ?>
                             </h5>
 
                             <div class="row g-3">
                                 <div class="col-6">
-                                    <div class="text-muted small text-uppercase fw-semibold">Buchungsnummer</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_booking_nr') ?></div>
                                     <div class="fw-bold text-primary font-monospace">
                                         <?= htmlspecialchars($buchung['buchungsnummer']) ?>
                                     </div>
                                 </div>
                                 <div class="col-6">
-                                    <div class="text-muted small text-uppercase fw-semibold">Sitzplatz</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_seat_nr') ?></div>
                                     <div class="fw-bold">
                                         Tisch <?= (int)$buchung['tischnummer'] ?>,
                                         Platz <?= (int)$buchung['sitzplatznummer'] ?>
@@ -176,7 +176,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     </div>
                                 </div>
                                 <div class="col-6">
-                                    <div class="text-muted small text-uppercase fw-semibold">Zahlungsart</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_payment') ?></div>
                                     <div class="fw-bold">
                                         <?php
                                         $zahlIcon = match($buchung['zahlungsart'] ?? '') {
@@ -190,21 +190,21 @@ include __DIR__ . '/../includes/navbar.php';
                                     </div>
                                 </div>
                                 <div class="col-6">
-                                    <div class="text-muted small text-uppercase fw-semibold">Betrag</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_price') ?></div>
                                     <div class="fw-bold text-success fs-5">
                                         <?= formatBetrag((float)($buchung['betrag'] ?? $buchung['preis'] ?? 0)) ?>
                                     </div>
                                 </div>
                                 <div class="col-6">
-                                    <div class="text-muted small text-uppercase fw-semibold">Zahlungsstatus</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_payment_status') ?></div>
                                     <div><?= statusBadge($buchung['payment_status'] ?? 'offen') ?></div>
                                 </div>
                                 <div class="col-6">
-                                    <div class="text-muted small text-uppercase fw-semibold">Buchungsstatus</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_status') ?></div>
                                     <div><?= statusBadge($buchung['status']) ?></div>
                                 </div>
                                 <div class="col-12">
-                                    <div class="text-muted small text-uppercase fw-semibold">Buchungsdatum</div>
+                                    <div class="text-muted small text-uppercase fw-semibold"><?= __('lbl_created_at') ?></div>
                                     <div><?= date('d.m.Y H:i', strtotime($buchung['erstellt_am'])) ?> Uhr</div>
                                 </div>
                             </div>
