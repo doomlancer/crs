@@ -854,6 +854,14 @@ function loadSeats(eventId) {
         });
 }
 
+// Auto-load seats if event already selected
+document.addEventListener("DOMContentLoaded", function() {
+    const evtSel = document.getElementById("res_event");
+    if (evtSel && evtSel.value) {
+        loadSeats(evtSel.value);
+    }
+});
+
 // Modal öffnen wenn action=create in URL
 ' . ($action === 'create' ? '
 document.addEventListener("DOMContentLoaded", function() {
