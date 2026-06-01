@@ -24,7 +24,7 @@ define('DB_PASS', 'StrongPassword123!');
 define('DB_CHARSET', 'utf8mb4');
 
 // Anwendungs-Einstellungen
-define('APP_NAME', 'Karneval Reservierungssystem');
+define('APP_NAME', 'Kameruner-Tickets');
 define('APP_URL', 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
 define('SESSION_TIMEOUT', 1800); // 30 Minuten in Sekunden
 define('MAX_LOGIN_VERSUCHE', 5);
@@ -43,6 +43,15 @@ define('HMAC_SECRET', 'karneval-hmac-secret-change-in-production-2024');
 
 // Upload-Verzeichnis
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
+
+// Dynamic logo path - admin can override via admin_settings.php
+$_logoConfig = UPLOAD_DIR . '.logo_config';
+if (file_exists($_logoConfig)) {
+    define('LOGO_PATH', trim(file_get_contents($_logoConfig)));
+} else {
+    define('LOGO_PATH', '/uploads/logo.svg');
+}
+unset($_logoConfig);
 
 // Log-Verzeichnis erstellen falls nicht vorhanden
 if (!is_dir(__DIR__ . '/logs')) {
