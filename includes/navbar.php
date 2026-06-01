@@ -47,6 +47,9 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                         <li><a class="dropdown-item" href="/pages/kassierer_guestlist.php">
                             <i class="bi bi-people"></i> Gästeliste
                         </a></li>
+                        <li><a class="dropdown-item" href="/pages/kassierer_tagesabschluss.php">
+                            <i class="bi bi-clipboard-data"></i> Tagesabschluss
+                        </a></li>
                         <li><a class="dropdown-item" href="/pages/kassierer_statistiken.php">
                             <i class="bi bi-bar-chart"></i> Statistiken
                         </a></li>

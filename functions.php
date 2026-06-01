@@ -309,3 +309,118 @@ function isAjax(): bool {
     return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
            strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
 }
+
+// =====================
+// QR-Code & HMAC
+// =====================
+
+/**
+ * HMAC-Token für Buchungsnummer generieren (für QR-Codes)
+ */
+function generateHmacToken(string $buchungsnummer): string {
+    return hash_hmac('sha256', $buchungsnummer, HMAC_SECRET);
+}
+
+/**
+ * HMAC-Token verifizieren
+ */
+function verifyHmacToken(string $buchungsnummer, string $token): bool {
+    return hash_equals(generateHmacToken($buchungsnummer), $token);
+}
+
+/**
+ * QR-Code als HTML-Div zurückgeben (wird durch qrcode.js client-seitig gerendert)
+ * @param string $data  Daten/URL für den QR-Code
+ * @param int    $size  Größe in Pixel
+ */
+function generateQrCode(string $data, int $size = 200): string {
+    $escaped = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+    return '<div class="qr-code-container text-center">
+                <canvas id="qr-canvas" data-qr="' . $escaped . '" data-size="' . $size . '"></canvas>
+            </div>';
+}
+
+// =====================
+// Warteliste
+// =====================
+
+/**
+ * Nächsten Wartenden benachrichtigen wenn ein Platz frei wird
+ */
+function notifyNextWaitingUser(int $eventId): void {
+    try {
+        require_once __DIR__ . '/includes/mailer.php';
+        $pdo = getDB();
+
+        // Ältesten wartenden Eintrag holen
+        $stmt = $pdo->prepare(
+            "SELECT w.id, w.user_id, u.vorname, u.email, e.name AS event_name, e.datum AS event_datum
+             FROM waitinglist w
+             JOIN users  u ON w.user_id  = u.id
+             JOIN events e ON w.event_id = e.id
+             WHERE w.event_id = ? AND w.status = 'wartend'
+             ORDER BY w.erstellt_am ASC
+             LIMIT 1"
+        );
+        $stmt->execute([$eventId]);
+        $entry = $stmt->fetch();
+        if (!$entry) return;
+
+        // Token generieren (24h gültig)
+        $token   = bin2hex(random_bytes(32));
+        $expires = date('Y-m-d H:i:s', time() + 86400);
+
+        $pdo->prepare(
+            "UPDATE waitinglist SET status = 'benachrichtigt', benachrichtigt_token = ?, token_expires = ? WHERE id = ?"
+        )->execute([$token, $expires, $entry['id']]);
+
+        $acceptUrl = APP_URL . '/api/accept_waitinglist.php?token=' . urlencode($token);
+        sendMail(
+            $entry['email'],
+            'Platz verfügbar – ' . $entry['event_name'],
+            'warteliste_benachrichtigung',
+            [
+                'vorname'     => $entry['vorname'],
+                'event_name'  => $entry['event_name'],
+                'event_datum' => formatDatum($entry['event_datum']),
+                'accept_url'  => $acceptUrl,
+                'expires_in'  => '24 Stunden',
+            ]
+        );
+    } catch (Exception $e) {
+        error_log('notifyNextWaitingUser Fehler: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Admin/Kassierer über Stornierung informieren
+ */
+function notifyAdminStorno(array $reservation, string $storniertVon): void {
+    try {
+        require_once __DIR__ . '/includes/mailer.php';
+        $pdo = getDB();
+
+        // Admin-Emails holen
+        $admins = $pdo->query("SELECT email FROM users WHERE rolle IN ('admin','kassierer') AND aktiv = 1")
+                       ->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($admins as $adminEmail) {
+            sendMail(
+                $adminEmail,
+                'Stornierung: ' . $reservation['buchungsnummer'],
+                'admin_storno_info',
+                [
+                    'gast_name'      => $reservation['gast_name'] ?? 'Unbekannt',
+                    'gast_email'     => $reservation['gast_email'] ?? '',
+                    'buchungsnummer' => $reservation['buchungsnummer'],
+                    'event_name'     => $reservation['event_name'] ?? '',
+                    'event_datum'    => $reservation['event_datum'] ?? '',
+                    'betrag'         => formatBetrag((float)($reservation['betrag'] ?? 0)),
+                    'storniert_von'  => $storniertVon,
+                ]
+            );
+        }
+    } catch (Exception $e) {
+        error_log('notifyAdminStorno Fehler: ' . $e->getMessage());
+    }
+}

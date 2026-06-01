@@ -104,6 +104,7 @@ function registerUser(array $data): true|array {
     $passwort2   = $data['passwort2'] ?? '';
     $zahlungsart = $data['zahlungsart'] ?? '';
     $adresse     = trim($data['adresse'] ?? '');
+    $agb         = !empty($data['agb_akzeptiert']);
 
     // Validierungen
     if (strlen($vorname) < 2)  $errors[] = 'Vorname muss mindestens 2 Zeichen lang sein.';
@@ -113,6 +114,9 @@ function registerUser(array $data): true|array {
     if ($passwort !== $passwort2) $errors[] = 'Die Passwörter stimmen nicht überein.';
     if (!in_array($zahlungsart, ['bar', 'ueberweisung', 'paypal'], true)) {
         $errors[] = 'Bitte wählen Sie eine gültige Zahlungsart.';
+    }
+    if (!$agb) {
+        $errors[] = 'Bitte akzeptieren Sie die AGB und Datenschutzerklärung.';
     }
 
     if (!empty($errors)) return $errors;
@@ -126,10 +130,10 @@ function registerUser(array $data): true|array {
         return ['Diese E-Mail-Adresse ist bereits registriert.'];
     }
 
-    // Benutzer anlegen
+    // Benutzer anlegen (telefon/geburtsdatum sind optional, mit DB-Migration vorhanden)
     $stmt = $pdo->prepare(
-        'INSERT INTO users (vorname, nachname, email, passwort, zahlungsart, adresse)
-         VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO users (vorname, nachname, email, passwort, zahlungsart, adresse, agb_akzeptiert)
+         VALUES (?, ?, ?, ?, ?, ?, 1)'
     );
     $stmt->execute([
         $vorname,
@@ -142,6 +146,19 @@ function registerUser(array $data): true|array {
 
     $userId = (int)$pdo->lastInsertId();
     logAudit('REGISTRIERUNG', 'users', $userId, "Neuer Benutzer: {$email}");
+
+    // Willkommens-E-Mail senden
+    try {
+        require_once __DIR__ . '/mailer.php';
+        sendMail($email, 'Willkommen beim Karneval!', 'willkommen', [
+            'vorname'   => $vorname,
+            'nachname'  => $nachname,
+            'email'     => $email,
+            'login_url' => APP_URL . '/pages/login.php',
+        ]);
+    } catch (Exception $e) {
+        error_log('Willkommens-Mail Fehler: ' . $e->getMessage());
+    }
 
     return true;
 }

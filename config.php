@@ -33,6 +33,14 @@ define('LOGIN_SPERRZEIT', 900); // 15 Minuten in Sekunden
 // Ticket-Preis
 define('TICKET_PREIS', 15.00);
 
+// E-Mail-Konfiguration
+define('MAIL_FROM',      'Kassierer@die-kameruner.de');
+define('MAIL_FROM_NAME', 'Kassierer');
+define('MAIL_REPLY_TO',  'Kassierer@die-kameruner.de');
+
+// HMAC-Secret für QR-Code-Signierung (bitte in Produktion ändern!)
+define('HMAC_SECRET', 'karneval-hmac-secret-change-in-production-2024');
+
 // Upload-Verzeichnis
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
 

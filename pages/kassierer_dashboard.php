@@ -207,6 +207,60 @@ include __DIR__ . '/../includes/navbar.php';
 
     <?= getFlash() ?>
 
+    <!-- ── Schnell-Check-in & QR-Scanner ─────────────────────────────────── -->
+    <div class="row g-3 mb-4">
+        <!-- Schnell-Check-in per Buchungsnummer -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-warning text-dark fw-bold border-0">
+                    <i class="bi bi-lightning-charge me-2"></i>Schnell-Check-in
+                </div>
+                <div class="card-body">
+                    <div class="input-group mb-2">
+                        <input type="text" id="schnellCheckinInput" class="form-control form-control-lg"
+                               placeholder="Buchungsnummer (z.B. KARN-2024-ABCDEF)"
+                               autocomplete="off" autofocus
+                               oninput="this.value = this.value.toUpperCase()">
+                        <button class="btn btn-warning fw-bold" type="button" onclick="schnellCheckin()">
+                            <i class="bi bi-check-circle me-1"></i>Check-in
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle me-1"></i>Enter drücken oder Button klicken
+                    </small>
+                    <div id="schnellCheckinResult" class="mt-2" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QR-Code Scanner -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-dark text-white fw-bold border-0">
+                    <i class="bi bi-qr-code-scan me-2"></i>QR-Code Scanner
+                </div>
+                <div class="card-body text-center">
+                    <div id="qrScannerContainer" style="display:none;">
+                        <video id="qrVideo" style="width:100%;max-width:300px;border-radius:8px;" autoplay playsinline></video>
+                        <div class="mt-2">
+                            <button class="btn btn-outline-danger btn-sm" onclick="stopScanner()">
+                                <i class="bi bi-x-circle me-1"></i>Scanner schließen
+                            </button>
+                        </div>
+                    </div>
+                    <div id="qrScannerButton">
+                        <i class="bi bi-qr-code display-3 text-muted d-block mb-2"></i>
+                        <button class="btn btn-dark fw-semibold" onclick="startScanner()">
+                            <i class="bi bi-camera me-2"></i>Kamera-Scanner öffnen
+                        </button>
+                        <p class="text-muted small mt-2 mb-0">QR-Code vom Ticket scannen</p>
+                    </div>
+                    <div id="qrScanResult" class="mt-2" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ── KPI-Karten ─────────────────────────────────────────────────────── -->
     <div class="row g-3 mb-4">
 
@@ -511,4 +565,151 @@ include __DIR__ . '/../includes/navbar.php';
 
 </main>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php
+$csrfToken = htmlspecialchars(generateCsrfToken());
+$extraScripts = <<<HTML
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+const CSRF_TOKEN = '{$csrfToken}';
+let scannerActive = false;
+let videoStream   = null;
+let scanInterval  = null;
+
+// ── Schnell-Check-in ────────────────────────────────────────────────────────
+document.getElementById('schnellCheckinInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') schnellCheckin();
+});
+
+function schnellCheckin() {
+    var input = document.getElementById('schnellCheckinInput');
+    var nr    = input.value.trim().toUpperCase();
+    if (!nr) { showCheckinResult('schnellCheckinResult', false, 'Bitte Buchungsnummer eingeben.'); return; }
+
+    var result = document.getElementById('schnellCheckinResult');
+    result.innerHTML = '<div class="spinner-border spinner-border-sm text-warning me-2"></div>Suche...';
+    result.style.display = 'block';
+
+    fetch('/api/checkin_gast.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'buchungsnummer=' + encodeURIComponent(nr) + '&csrf_token=' + encodeURIComponent(CSRF_TOKEN)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showCheckinResult('schnellCheckinResult', true,
+                '<strong>✓ Eingecheckt!</strong><br>' +
+                '<b>' + escHtml(data.gast) + '</b> – Tisch ' + escHtml(data.tisch) + ', Platz ' + escHtml(data.platz) + '<br>' +
+                '<small>' + escHtml(data.event) + ' | ' + escHtml(data.zahlungsart) + ' | ' + escHtml(data.betrag) + '</small>'
+            );
+            input.value = '';
+            input.focus();
+        } else if (data.alreadyCheckedIn) {
+            showCheckinResult('schnellCheckinResult', false,
+                '⚠ Bereits eingecheckt: <b>' + escHtml(data.gast) + '</b> – T' + escHtml(data.tisch) + '/P' + escHtml(data.platz)
+            );
+        } else {
+            showCheckinResult('schnellCheckinResult', false, '✗ ' + escHtml(data.error || 'Fehler'));
+        }
+    })
+    .catch(() => showCheckinResult('schnellCheckinResult', false, 'Netzwerkfehler.'));
+}
+
+function showCheckinResult(id, success, html) {
+    var el = document.getElementById(id);
+    el.className = 'alert alert-' + (success ? 'success' : 'warning') + ' py-2 mt-2';
+    el.innerHTML = html;
+    el.style.display = 'block';
+    if (success) setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+// ── QR-Code Scanner ─────────────────────────────────────────────────────────
+function startScanner() {
+    document.getElementById('qrScannerButton').style.display = 'none';
+    document.getElementById('qrScannerContainer').style.display = 'block';
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(function(stream) {
+        videoStream = stream;
+        var video = document.getElementById('qrVideo');
+        video.srcObject = stream;
+        video.play();
+        scannerActive = true;
+        scanInterval = setInterval(scanFrame, 300);
+    })
+    .catch(function(err) {
+        alert('Kamerazugriff verweigert: ' + err.message);
+        stopScanner();
+    });
+}
+
+function stopScanner() {
+    scannerActive = false;
+    if (scanInterval) clearInterval(scanInterval);
+    if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+    document.getElementById('qrScannerContainer').style.display = 'none';
+    document.getElementById('qrScannerButton').style.display = 'block';
+}
+
+function scanFrame() {
+    if (!scannerActive) return;
+    var video = document.getElementById('qrVideo');
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+    var canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var code = jsQR(imageData.data, imageData.width, imageData.height);
+    if (!code) return;
+
+    // QR-Code gefunden – stoppe Scanner
+    stopScanner();
+    var qrData = code.data;
+
+    // URL aus QR-Code extrahieren
+    var result = document.getElementById('qrScanResult');
+    result.innerHTML = '<div class="spinner-border spinner-border-sm text-warning me-2"></div>Verarbeite QR-Code...';
+    result.style.display = 'block';
+
+    // Prüfe ob es eine verify_checkin-URL ist
+    var urlMatch = qrData.match(/[?&]nr=([^&]+)/);
+    var tokenMatch = qrData.match(/[?&]token=([^&]+)/);
+
+    if (urlMatch && tokenMatch) {
+        var nr    = decodeURIComponent(urlMatch[1]);
+        var token = decodeURIComponent(tokenMatch[1]);
+        fetch('/api/verify_checkin.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            body: 'nr=' + encodeURIComponent(nr) + '&token=' + encodeURIComponent(token)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showCheckinResult('qrScanResult', true,
+                    '<strong>✓ QR-Check-in erfolgreich!</strong><br>' +
+                    '<b>' + escHtml(data.gast) + '</b> – Tisch ' + escHtml(data.tisch) + ', Platz ' + escHtml(data.platz)
+                );
+            } else if (data.alreadyCheckedIn) {
+                showCheckinResult('qrScanResult', false, '⚠ Bereits eingecheckt: ' + escHtml(data.message));
+            } else {
+                showCheckinResult('qrScanResult', false, '✗ ' + escHtml(data.error || 'Fehler'));
+            }
+        })
+        .catch(() => showCheckinResult('qrScanResult', false, 'Netzwerkfehler.'));
+    } else {
+        showCheckinResult('qrScanResult', false, 'Ungültiger QR-Code: ' + escHtml(qrData.substring(0, 80)));
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+HTML;
+
+include __DIR__ . '/../includes/footer.php';
+

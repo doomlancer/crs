@@ -6,6 +6,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/mailer.php';
 
 // Nur POST erlauben
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -58,6 +59,20 @@ if ($action === 'cancel') {
         }
 
         // Reservierung löschen (Sitz wird via FK-Cascade-Free freigegeben nach Seat-Update)
+        // Buchungsdetails für E-Mail vor dem Löschen laden
+        $stmtDetail = $pdo->prepare(
+            'SELECT r.buchungsnummer, r.preis, u.vorname, u.email,
+                    e.name AS event_name, e.datum AS event_datum, e.id AS event_id_detail,
+                    p.betrag
+             FROM reservations r
+             JOIN users  u ON r.user_id  = u.id
+             JOIN events e ON r.event_id = e.id
+             LEFT JOIN payments p ON p.reservation_id = r.id
+             WHERE r.id = ?'
+        );
+        $stmtDetail->execute([$reservation['id']]);
+        $resDetail = $stmtDetail->fetch();
+
         $pdo->prepare('UPDATE seats SET status = "verfuegbar" WHERE id = ?')
             ->execute([$reservation['seat_id']]);
         $pdo->prepare('DELETE FROM payments WHERE reservation_id = ?')
@@ -67,6 +82,30 @@ if ($action === 'cancel') {
 
         logAudit('STORNIERUNG', 'reservations', $reservation['id'], "Stornierung durch Benutzer");
         $pdo->commit();
+
+        // Storno-E-Mails versenden (asynchron, Fehler ignorieren)
+        if ($resDetail) {
+            $eventIdForWl = $resDetail['event_id_detail'] ?? $reservation['event_id'];
+            // Gast-E-Mail
+            sendMail($resDetail['email'], 'Stornierungsbestätigung – ' . $resDetail['buchungsnummer'], 'storno_bestaetigung', [
+                'vorname'       => $resDetail['vorname'],
+                'buchungsnummer'=> $resDetail['buchungsnummer'],
+                'event_name'    => $resDetail['event_name'],
+                'event_datum'   => formatDatum($resDetail['event_datum']),
+                'betrag'        => formatBetrag((float)($resDetail['betrag'] ?? $resDetail['preis'] ?? 0)),
+            ]);
+            // Admin/Kassierer-Info
+            notifyAdminStorno([
+                'gast_name'      => $resDetail['vorname'],
+                'gast_email'     => $resDetail['email'],
+                'buchungsnummer' => $resDetail['buchungsnummer'],
+                'event_name'     => $resDetail['event_name'],
+                'event_datum'    => formatDatum($resDetail['event_datum']),
+                'betrag'         => $resDetail['betrag'] ?? $resDetail['preis'] ?? 0,
+            ], 'Gast selbst');
+            // Nächsten auf Warteliste benachrichtigen
+            notifyNextWaitingUser((int)$eventIdForWl);
+        }
 
         setFlash('success', 'Reservierung erfolgreich storniert.');
         redirect('/pages/meine_reservierungen.php');
@@ -178,6 +217,33 @@ try {
     }
 
     $pdo->commit();
+
+    // Buchungsbestätigungs-E-Mail senden
+    try {
+        $stmtUser2 = $pdo->prepare('SELECT vorname, email FROM users WHERE id = ?');
+        $stmtUser2->execute([$userId]);
+        $userInfo  = $stmtUser2->fetch();
+
+        $stmtEv = $pdo->prepare('SELECT name, datum FROM events WHERE id = ?');
+        $stmtEv->execute([$eventId]);
+        $evInfo = $stmtEv->fetch();
+
+        if ($userInfo && $evInfo) {
+            $ticketUrl = APP_URL . '/pages/buchung_detail.php?buchungsnummer=' . urlencode($buchungsnummern[0]);
+            sendMail($userInfo['email'], 'Buchungsbestätigung – ' . implode(', ', $buchungsnummern), 'buchungsbestaetigung', [
+                'vorname'        => $userInfo['vorname'],
+                'buchungsnummern'=> $buchungsnummern,
+                'event_name'     => $evInfo['name'],
+                'event_datum'    => formatDatum($evInfo['datum']),
+                'anzahl'         => count($buchungsnummern),
+                'betrag_gesamt'  => formatBetrag(count($buchungsnummern) * $ticketPreis),
+                'zahlungsart'    => zahlungsartLabel($userZahlungsart),
+                'ticket_url'     => $ticketUrl,
+            ]);
+        }
+    } catch (Exception $e) {
+        error_log('Buchungsbestätigungs-Mail Fehler: ' . $e->getMessage());
+    }
 
     $anzahl = count($buchungsnummern);
     $nummernText = implode(', ', $buchungsnummern);

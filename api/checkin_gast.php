@@ -20,25 +20,50 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
     redirect('/pages/kassierer_dashboard.php');
 }
 
-$reservationId = (int)($_POST['reservation_id'] ?? 0);
-if (!$reservationId) {
-    if (isAjax()) jsonResponse(['error' => 'Ungültige ID'], 400);
-    setFlash('error', 'Ungültige Reservierungs-ID.');
+$reservationId   = (int)($_POST['reservation_id'] ?? 0);
+$buchungsnummer  = strtoupper(trim($_POST['buchungsnummer'] ?? ''));
+
+if (!$reservationId && empty($buchungsnummer)) {
+    if (isAjax()) jsonResponse(['error' => 'Ungültige ID oder Buchungsnummer'], 400);
+    setFlash('error', 'Ungültige Reservierungs-ID oder Buchungsnummer.');
     redirect('/pages/kassierer_dashboard.php');
 }
 
 try {
     $pdo = getDB();
 
-    // Reservierung laden und prüfen
-    $stmt = $pdo->prepare(
-        'SELECT r.id, r.status, r.buchungsnummer, r.seat_id,
-                u.vorname, u.nachname
-         FROM reservations r
-         JOIN users u ON r.user_id = u.id
-         WHERE r.id = ?'
-    );
-    $stmt->execute([$reservationId]);
+    // Reservierung laden und prüfen (über ID oder Buchungsnummer)
+    if ($reservationId) {
+        $stmt = $pdo->prepare(
+            'SELECT r.id, r.status, r.buchungsnummer, r.seat_id, r.event_id,
+                    u.vorname, u.nachname, u.email,
+                    e.name AS event_name, t.tischnummer, s.sitzplatznummer,
+                    p.zahlungsart, p.status AS payment_status, p.betrag
+             FROM reservations r
+             JOIN users  u ON r.user_id  = u.id
+             JOIN events e ON r.event_id = e.id
+             JOIN seats  s ON r.seat_id  = s.id
+             JOIN tables t ON s.table_id = t.id
+             LEFT JOIN payments p ON p.reservation_id = r.id
+             WHERE r.id = ?'
+        );
+        $stmt->execute([$reservationId]);
+    } else {
+        $stmt = $pdo->prepare(
+            'SELECT r.id, r.status, r.buchungsnummer, r.seat_id, r.event_id,
+                    u.vorname, u.nachname, u.email,
+                    e.name AS event_name, t.tischnummer, s.sitzplatznummer,
+                    p.zahlungsart, p.status AS payment_status, p.betrag
+             FROM reservations r
+             JOIN users  u ON r.user_id  = u.id
+             JOIN events e ON r.event_id = e.id
+             JOIN seats  s ON r.seat_id  = s.id
+             JOIN tables t ON s.table_id = t.id
+             LEFT JOIN payments p ON p.reservation_id = r.id
+             WHERE r.buchungsnummer = ?'
+        );
+        $stmt->execute([$buchungsnummer]);
+    }
     $reservation = $stmt->fetch();
 
     if (!$reservation) {
@@ -68,8 +93,16 @@ try {
 
     if (isAjax()) {
         jsonResponse([
-            'success' => true,
-            'message' => "Gast {$reservation['vorname']} {$reservation['nachname']} erfolgreich eingecheckt.",
+            'success'        => true,
+            'message'        => "Gast {$reservation['vorname']} {$reservation['nachname']} erfolgreich eingecheckt.",
+            'gast'           => $reservation['vorname'] . ' ' . $reservation['nachname'],
+            'email'          => $reservation['email'] ?? '',
+            'tisch'          => $reservation['tischnummer'] ?? '',
+            'platz'          => $reservation['sitzplatznummer'] ?? '',
+            'event'          => $reservation['event_name'] ?? '',
+            'zahlungsart'    => zahlungsartLabel($reservation['zahlungsart'] ?? 'bar'),
+            'payment_status' => $reservation['payment_status'] ?? 'offen',
+            'betrag'         => formatBetrag((float)($reservation['betrag'] ?? 0)),
             'buchungsnummer' => $reservation['buchungsnummer'],
         ]);
     }

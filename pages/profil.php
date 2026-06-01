@@ -13,7 +13,7 @@ $userId = (int)$_SESSION['user_id'];
 
 // Aktuellen Benutzer laden
 $stmt = $pdo->prepare(
-    'SELECT id, vorname, nachname, email, zahlungsart, adresse, rolle, erstellt_am
+    'SELECT id, vorname, nachname, email, zahlungsart, adresse, telefon, geburtsdatum, rolle, erstellt_am
      FROM users WHERE id = ? AND aktiv = 1'
 );
 $stmt->execute([$userId]);
@@ -43,10 +43,12 @@ $pwSuccess     = false;
 
 // Formularwerte für Wiederbefüllung (bei Fehler)
 $formData = [
-    'vorname'     => $user['vorname'],
-    'nachname'    => $user['nachname'],
-    'adresse'     => $user['adresse'] ?? '',
-    'zahlungsart' => $user['zahlungsart'],
+    'vorname'      => $user['vorname'],
+    'nachname'     => $user['nachname'],
+    'adresse'      => $user['adresse'] ?? '',
+    'zahlungsart'  => $user['zahlungsart'],
+    'telefon'      => $user['telefon'] ?? '',
+    'geburtsdatum' => $user['geburtsdatum'] ?? '',
 ];
 
 // =====================
@@ -57,15 +59,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $profilErrors[] = 'Ungültiger Sicherheitstoken. Bitte laden Sie die Seite neu.';
     } else {
-        $vorname     = trim($_POST['vorname']     ?? '');
-        $nachname    = trim($_POST['nachname']    ?? '');
-        $adresse     = trim($_POST['adresse']     ?? '');
-        $zahlungsart = trim($_POST['zahlungsart'] ?? '');
+        $vorname      = trim($_POST['vorname']      ?? '');
+        $nachname     = trim($_POST['nachname']     ?? '');
+        $adresse      = trim($_POST['adresse']      ?? '');
+        $zahlungsart  = trim($_POST['zahlungsart']  ?? '');
+        $telefon      = trim($_POST['telefon']      ?? '');
+        $geburtsdatum = trim($_POST['geburtsdatum'] ?? '');
 
-        $formData['vorname']     = $vorname;
-        $formData['nachname']    = $nachname;
-        $formData['adresse']     = $adresse;
-        $formData['zahlungsart'] = $zahlungsart;
+        $formData['vorname']      = $vorname;
+        $formData['nachname']     = $nachname;
+        $formData['adresse']      = $adresse;
+        $formData['zahlungsart']  = $zahlungsart;
+        $formData['telefon']      = $telefon;
+        $formData['geburtsdatum'] = $geburtsdatum;
 
         // Validierung
         if (strlen($vorname) < 2 || strlen($vorname) > 100) {
@@ -77,19 +83,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($adresse !== '' && strlen($adresse) > 255) {
             $profilErrors[] = 'Die Adresse darf maximal 255 Zeichen lang sein.';
         }
+        if ($telefon !== '' && strlen($telefon) > 30) {
+            $profilErrors[] = 'Die Telefonnummer darf maximal 30 Zeichen lang sein.';
+        }
+        if ($geburtsdatum !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $geburtsdatum)) {
+            $profilErrors[] = 'Bitte geben Sie ein gültiges Geburtsdatum ein.';
+        }
         if (!in_array($zahlungsart, ['bar', 'ueberweisung', 'paypal'], true)) {
             $profilErrors[] = 'Bitte wählen Sie eine gültige Zahlungsart.';
         }
 
         if (empty($profilErrors)) {
             $stmt = $pdo->prepare(
-                'UPDATE users SET vorname = ?, nachname = ?, adresse = ?, zahlungsart = ? WHERE id = ?'
+                'UPDATE users SET vorname = ?, nachname = ?, adresse = ?, zahlungsart = ?,
+                                  telefon = ?, geburtsdatum = ? WHERE id = ?'
             );
             $stmt->execute([
                 $vorname,
                 $nachname,
                 $adresse !== '' ? $adresse : null,
                 $zahlungsart,
+                $telefon !== '' ? $telefon : null,
+                $geburtsdatum !== '' ? $geburtsdatum : null,
                 $userId,
             ]);
 
@@ -416,6 +431,40 @@ include __DIR__ . '/../includes/navbar.php';
                                     >
                                 </div>
 
+                                <!-- Telefon (optional) -->
+                                <div class="col-sm-6">
+                                    <label for="telefon" class="form-label fw-semibold">
+                                        <i class="bi bi-telephone me-1"></i>Telefon
+                                        <span class="text-muted fw-normal small">(optional)</span>
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        id="telefon"
+                                        name="telefon"
+                                        class="form-control"
+                                        value="<?= htmlspecialchars($formData['telefon']) ?>"
+                                        maxlength="30"
+                                        placeholder="+49 123 456789"
+                                        autocomplete="tel"
+                                    >
+                                </div>
+
+                                <!-- Geburtsdatum (optional) -->
+                                <div class="col-sm-6">
+                                    <label for="geburtsdatum" class="form-label fw-semibold">
+                                        <i class="bi bi-calendar-date me-1"></i>Geburtsdatum
+                                        <span class="text-muted fw-normal small">(optional)</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        id="geburtsdatum"
+                                        name="geburtsdatum"
+                                        class="form-control"
+                                        value="<?= htmlspecialchars($formData['geburtsdatum']) ?>"
+                                        max="<?= date('Y-m-d') ?>"
+                                    >
+                                </div>
+
                                 <!-- Pflichtfeld-Hinweis -->
                                 <div class="col-12">
                                     <p class="text-muted small mb-0">
@@ -577,8 +626,67 @@ include __DIR__ . '/../includes/navbar.php';
                     </div>
                 </div>
 
+                <!-- ==========================================
+                     ABSCHNITT: Konto löschen (DSGVO)
+                     ========================================== -->
+                <div class="card border-0 shadow-sm border-danger mt-4">
+                    <div class="card-header bg-danger text-white border-0 py-3">
+                        <h5 class="mb-0 fw-bold">
+                            <i class="bi bi-trash me-2"></i>Konto löschen
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <p class="text-muted">
+                            Wenn Sie Ihr Konto löschen, werden alle persönlichen Daten unwiderruflich anonymisiert.
+                            Reservierungen mit offenen Zahlungen müssen zuerst beglichen werden.
+                        </p>
+                        <button type="button" class="btn btn-outline-danger fw-bold"
+                                data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+                            <i class="bi bi-trash me-2"></i>Konto unwiderruflich löschen
+                        </button>
+                    </div>
+                </div>
+
             </div><!-- /.col-lg-8 -->
         </div><!-- /.row -->
+
+<!-- Modal: Konto löschen Bestätigung -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content border-danger">
+            <div class="modal-header bg-danger text-white border-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Konto wirklich löschen?
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Diese Aktion ist unwiderruflich!</strong><br>
+                    Alle Ihre persönlichen Daten werden anonymisiert. Sie können sich danach nicht mehr einloggen.
+                </div>
+                <p>Bitte bestätigen Sie die Löschung mit Ihrem Passwort:</p>
+                <form method="POST" action="/api/delete_account.php" id="deleteAccountForm">
+                    <?= csrfField() ?>
+                    <input type="hidden" name="action" value="delete_account">
+                    <div class="mb-3">
+                        <label for="delete_passwort" class="form-label fw-semibold">Passwort</label>
+                        <input type="password" id="delete_passwort" name="passwort"
+                               class="form-control" required placeholder="Ihr aktuelles Passwort">
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger fw-bold">
+                            <i class="bi bi-trash me-2"></i>Ja, Konto löschen
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            Abbrechen
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
     </div><!-- /.container -->
 </main>

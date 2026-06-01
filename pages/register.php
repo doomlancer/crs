@@ -64,13 +64,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($errors)) {
             $result = registerUser([
-                'vorname'     => $formData['vorname'],
-                'nachname'    => $formData['nachname'],
-                'email'       => $formData['email'],
-                'passwort'    => $passwort,
-                'passwort2'   => $passwort2,
-                'zahlungsart' => $formData['zahlungsart'],
-                'adresse'     => $formData['adresse'],
+                'vorname'        => $formData['vorname'],
+                'nachname'       => $formData['nachname'],
+                'email'          => $formData['email'],
+                'passwort'       => $passwort,
+                'passwort2'      => $passwort2,
+                'zahlungsart'    => $formData['zahlungsart'],
+                'adresse'        => $formData['adresse'],
+                'agb_akzeptiert' => $_POST['agb_akzeptiert'] ?? '',
             ]);
 
             if ($result === true) {
@@ -295,6 +296,27 @@ include __DIR__ . '/../includes/header.php';
                                 maxlength="255"
                                 autocomplete="street-address"
                             >
+                        </div>
+
+                        <!-- AGB-Checkbox -->
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input
+                                    type="checkbox"
+                                    id="agb_akzeptiert"
+                                    name="agb_akzeptiert"
+                                    class="form-check-input"
+                                    value="1"
+                                    required
+                                >
+                                <label for="agb_akzeptiert" class="form-check-label small">
+                                    Ich akzeptiere die
+                                    <a href="/pages/agb.php" target="_blank" class="text-warning">AGB</a>
+                                    und habe die
+                                    <a href="/pages/datenschutz.php" target="_blank" class="text-warning">Datenschutzerklärung</a>
+                                    gelesen. <span class="text-danger">*</span>
+                                </label>
+                            </div>
                         </div>
 
                         <!-- Hinweis Pflichtfelder -->

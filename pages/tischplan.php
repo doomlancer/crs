@@ -53,6 +53,14 @@ if ($eventId) {
     }
 }
 
+// Wartelisten-Status prüfen
+$aufWarteliste = false;
+if ($eventId) {
+    $stmtWl = $pdo->prepare("SELECT id FROM waitinglist WHERE user_id = ? AND event_id = ? AND status IN ('wartend','benachrichtigt')");
+    $stmtWl->execute([$userId, $eventId]);
+    $aufWarteliste = (bool)$stmtWl->fetch();
+}
+
 $pageTitle = 'Tischplan';
 $extraHead = '<style>
     .tischplan-container { background: #1a1a2e; border-radius: 12px; padding: 20px; min-height: 400px; overflow-x: auto; }
@@ -280,6 +288,39 @@ include __DIR__ . '/../includes/navbar.php';
             <!-- Reservierungs-Panel -->
             <div class="col-lg-3">
                 <div class="reservation-panel">
+                    <?php if ($aul['frei'] <= 0 && $aul['gesamt'] > 0): ?>
+                    <!-- Event ausgebucht: Wartelisten-Panel -->
+                    <div class="card shadow border-0 border-warning">
+                        <div class="card-header bg-dark text-warning fw-bold border-warning">
+                            <i class="bi bi-hourglass-split me-2"></i>Ausgebucht
+                        </div>
+                        <div class="card-body text-center py-4">
+                            <i class="bi bi-calendar-x display-3 text-warning d-block mb-3"></i>
+                            <p class="text-muted">Alle Plätze für diese Veranstaltung sind vergeben.</p>
+                            <?php if (!$aufWarteliste): ?>
+                            <p class="text-muted small">Tragen Sie sich auf die Warteliste ein – wir benachrichtigen Sie per E-Mail, sobald ein Platz frei wird!</p>
+                            <form method="POST" action="/api/join_waitinglist.php">
+                                <?= csrfField() ?>
+                                <input type="hidden" name="event_id" value="<?= $eventId ?>">
+                                <button type="submit" class="btn btn-warning w-100 fw-bold">
+                                    <i class="bi bi-clock-history me-2"></i>Auf Warteliste
+                                </button>
+                            </form>
+                            <?php else: ?>
+                            <div class="alert alert-success py-2 mb-0">
+                                <i class="bi bi-check-circle me-2"></i>
+                                <strong>Sie stehen auf der Warteliste!</strong><br>
+                                <small>Wir benachrichtigen Sie per E-Mail wenn ein Platz frei wird.</small>
+                            </div>
+                            <div class="mt-2">
+                                <a href="/pages/meine_reservierungen.php" class="btn btn-outline-secondary btn-sm w-100">
+                                    <i class="bi bi-list-check me-1"></i>Warteliste verwalten
+                                </a>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php else: ?>
                     <div class="card shadow border-0">
                         <div class="card-header bg-warning text-dark fw-bold">
                             <i class="bi bi-cart3 me-2"></i>Reservierung
@@ -363,6 +404,7 @@ include __DIR__ . '/../includes/navbar.php';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; // end !sold-out else ?>
         </div>
         <?php endif; ?>
     </div>

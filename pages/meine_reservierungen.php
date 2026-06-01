@@ -35,6 +35,18 @@ $geplant    = count(array_filter($reservierungen, fn($r) => $r['status'] === 'ge
 $eingecheckt = count(array_filter($reservierungen, fn($r) => $r['status'] === 'eingecheckt'));
 $gesamtBetrag = array_sum(array_column($reservierungen, 'betrag'));
 
+// Wartelisten-Einträge laden
+$stmtWl = $pdo->prepare(
+    "SELECT w.id, w.status, w.erstellt_am, w.token_expires,
+            e.name AS event_name, e.datum AS event_datum, e.id AS event_id
+     FROM waitinglist w
+     JOIN events e ON w.event_id = e.id
+     WHERE w.user_id = ? AND w.status IN ('wartend','benachrichtigt')
+     ORDER BY w.erstellt_am DESC"
+);
+$stmtWl->execute([$userId]);
+$warteliste = $stmtWl->fetchAll();
+
 $pageTitle = 'Meine Reservierungen';
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';
@@ -151,20 +163,24 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td><?= statusBadge($res['status']) ?></td>
                                 <td><?= statusBadge($res['payment_status'] ?? 'offen') ?></td>
                                 <td>
-                                    <?php if ($res['status'] === 'geplant'): ?>
-                                    <form method="POST" action="/api/reserve_seat.php"
-                                          onsubmit="return confirm('Möchten Sie diese Reservierung wirklich stornieren?')">
-                                        <?= csrfField() ?>
-                                        <input type="hidden" name="action" value="cancel">
-                                        <input type="hidden" name="event_id" value="">
-                                        <input type="hidden" name="reservation_id" value="<?= $res['id'] ?>">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-x-circle me-1"></i>Stornieren
-                                        </button>
-                                    </form>
-                                    <?php else: ?>
-                                    <span class="text-muted small">–</span>
-                                    <?php endif; ?>
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <a href="/pages/buchung_detail.php?buchungsnummer=<?= urlencode($res['buchungsnummer']) ?>"
+                                           class="btn btn-outline-warning btn-sm" title="Ticket anzeigen">
+                                            <i class="bi bi-qr-code"></i>
+                                        </a>
+                                        <?php if ($res['status'] === 'geplant'): ?>
+                                        <form method="POST" action="/api/reserve_seat.php"
+                                              onsubmit="return confirm('Möchten Sie diese Reservierung wirklich stornieren?')">
+                                            <?= csrfField() ?>
+                                            <input type="hidden" name="action" value="cancel">
+                                            <input type="hidden" name="event_id" value="">
+                                            <input type="hidden" name="reservation_id" value="<?= $res['id'] ?>">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                <i class="bi bi-x-circle"></i>
+                                            </button>
+                                        </form>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                             <!-- Detail-Zeile mit Buchungsnummer zum Drucken -->
@@ -189,6 +205,75 @@ include __DIR__ . '/../includes/navbar.php';
             </div>
         </div>
 
+        <?php endif; ?>
+
+        <?php if (!empty($warteliste)): ?>
+        <!-- Warteliste -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header bg-dark text-white d-flex align-items-center border-0 py-3">
+                <i class="bi bi-hourglass-split text-warning me-2"></i>
+                <span class="fw-semibold">Meine Wartelisten-Einträge</span>
+                <span class="badge bg-warning text-dark ms-2"><?= count($warteliste) ?></span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Veranstaltung</th>
+                            <th>Datum</th>
+                            <th>Status</th>
+                            <th>Eingetragen am</th>
+                            <th>Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($warteliste as $wl): ?>
+                        <tr>
+                            <td class="fw-semibold"><?= htmlspecialchars($wl['event_name']) ?></td>
+                            <td>
+                                <span class="badge bg-warning text-dark">
+                                    <?= formatDatum($wl['event_datum']) ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if ($wl['status'] === 'benachrichtigt'): ?>
+                                <span class="badge bg-success">
+                                    <i class="bi bi-bell-fill me-1"></i>Platz verfügbar!
+                                </span>
+                                <?php if (!empty($wl['token_expires'])): ?>
+                                <br><small class="text-muted">Noch bis: <?= date('d.m.Y H:i', strtotime($wl['token_expires'])) ?></small>
+                                <?php endif; ?>
+                                <?php else: ?>
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-hourglass me-1"></i>Wartend
+                                </span>
+                                <?php endif; ?>
+                            </td>
+                            <td><small class="text-muted"><?= date('d.m.Y H:i', strtotime($wl['erstellt_am'])) ?></small></td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <?php if ($wl['status'] === 'benachrichtigt'): ?>
+                                    <a href="/pages/tischplan.php?event_id=<?= $wl['event_id'] ?>"
+                                       class="btn btn-success btn-sm fw-semibold">
+                                        <i class="bi bi-grid-3x3 me-1"></i>Platz wählen
+                                    </a>
+                                    <?php endif; ?>
+                                    <form method="POST" action="/api/leave_waitinglist.php"
+                                          onsubmit="return confirm('Von der Warteliste entfernen?')">
+                                        <?= csrfField() ?>
+                                        <input type="hidden" name="waitinglist_id" value="<?= $wl['id'] ?>">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
         <?php endif; ?>
 
         <!-- Quick Actions -->

@@ -145,6 +145,7 @@ if ($selectedEventId) {
                 u.vorname,
                 u.nachname,
                 u.email,
+                u.telefon,
                 u.zahlungsart   AS user_zahlungsart,
                 t.tischnummer,
                 s.sitzplatznummer,
@@ -191,6 +192,21 @@ if ($selectedEventId) {
     $gaeste = $stmtG->fetchAll();
 }
 
+// ─── Warteliste laden ─────────────────────────────────────────────────────────
+$warteliste = [];
+if ($selectedEventId) {
+    $stmtWlList = $pdo->prepare(
+        "SELECT w.id, w.status, w.erstellt_am, w.token_expires,
+                u.vorname, u.nachname, u.email, u.telefon
+         FROM waitinglist w
+         JOIN users u ON w.user_id = u.id
+         WHERE w.event_id = ? AND w.status IN ('wartend','benachrichtigt')
+         ORDER BY w.erstellt_am ASC"
+    );
+    $stmtWlList->execute([$selectedEventId]);
+    $warteliste = $stmtWlList->fetchAll();
+}
+
 // ─── Summen berechnen ─────────────────────────────────────────────────────────
 $totalGaeste    = count($gaeste);
 $eingechecktAnz = count(array_filter($gaeste, fn($g) => $g['res_status'] === 'eingecheckt'));
@@ -225,10 +241,14 @@ include __DIR__ . '/../includes/navbar.php';
                 <?php endif; ?>
             </p>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             <a href="/pages/kassierer_dashboard.php<?= $selectedEventId ? '?event_id=' . $selectedEventId : '' ?>"
                class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
+            </a>
+            <a href="/pages/kassierer_tagesabschluss.php<?= $selectedEventId ? '?event_id=' . $selectedEventId : '' ?>"
+               class="btn btn-outline-warning btn-sm">
+                <i class="bi bi-clipboard-data me-1"></i>Tagesabschluss
             </a>
             <a href="/pages/kassierer_statistiken.php<?= $selectedEventId ? '?event_id=' . $selectedEventId : '' ?>"
                class="btn btn-outline-secondary btn-sm">
@@ -349,6 +369,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <th class="ps-3">#</th>
                             <th>Buchungsnr.</th>
                             <th>Name</th>
+                            <th>Telefon</th>
                             <th>Sitz</th>
                             <th>Zahlungsart</th>
                             <th>Zahlung</th>
@@ -376,6 +397,17 @@ include __DIR__ . '/../includes/navbar.php';
                                 <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname']) ?>
                             </div>
                             <small class="text-muted"><?= htmlspecialchars($g['email']) ?></small>
+                        </td>
+
+                        <!-- Telefon -->
+                        <td>
+                            <?php if (!empty($g['telefon'])): ?>
+                            <a href="tel:<?= htmlspecialchars($g['telefon']) ?>" class="text-decoration-none text-muted small">
+                                <i class="bi bi-telephone me-1"></i><?= htmlspecialchars($g['telefon']) ?>
+                            </a>
+                            <?php else: ?>
+                            <span class="text-muted small">–</span>
+                            <?php endif; ?>
                         </td>
 
                         <!-- Sitz: Tisch X Platz Y -->
@@ -417,6 +449,12 @@ include __DIR__ . '/../includes/navbar.php';
 
                         <!-- Aktionen -->
                         <td class="text-end pe-3 text-nowrap">
+
+                            <!-- Ticket-Link -->
+                            <a href="/pages/buchung_detail.php?buchungsnummer=<?= urlencode($g['buchungsnummer']) ?>"
+                               class="btn btn-sm btn-outline-warning" title="Ticket anzeigen" target="_blank">
+                                <i class="bi bi-qr-code"></i>
+                            </a>
 
                             <!-- Check-in Button -->
                             <?php if ($g['res_status'] !== 'eingecheckt'): ?>
@@ -511,6 +549,73 @@ include __DIR__ . '/../includes/navbar.php';
         <?php endif; ?>
 
     </div><!-- /card -->
+
+    <!-- ── Warteliste ────────────────────────────────────────────────────────── -->
+    <?php if ($selectedEventId): ?>
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-header bg-dark text-white border-0 d-flex align-items-center">
+            <i class="bi bi-hourglass-split text-warning me-2"></i>
+            <span class="fw-semibold">Warteliste</span>
+            <span class="badge bg-warning text-dark ms-2"><?= count($warteliste) ?></span>
+        </div>
+        <?php if (empty($warteliste)): ?>
+        <div class="card-body text-center text-muted py-4">
+            <i class="bi bi-hourglass fs-2 d-block mb-2"></i>
+            Niemand steht auf der Warteliste für dieses Event.
+        </div>
+        <?php else: ?>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 small">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>E-Mail</th>
+                        <th>Telefon</th>
+                        <th>Status</th>
+                        <th>Eingetragen</th>
+                        <th>Aktion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($warteliste as $i => $wl): ?>
+                    <tr>
+                        <td class="text-muted"><?= $i + 1 ?></td>
+                        <td class="fw-semibold"><?= htmlspecialchars($wl['vorname'] . ' ' . $wl['nachname']) ?></td>
+                        <td><small><?= htmlspecialchars($wl['email']) ?></small></td>
+                        <td>
+                            <?php if (!empty($wl['telefon'])): ?>
+                            <a href="tel:<?= htmlspecialchars($wl['telefon']) ?>" class="text-decoration-none text-muted">
+                                <i class="bi bi-telephone me-1"></i><?= htmlspecialchars($wl['telefon']) ?>
+                            </a>
+                            <?php else: ?>
+                            <span class="text-muted">–</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($wl['status'] === 'benachrichtigt'): ?>
+                            <span class="badge bg-success"><i class="bi bi-bell-fill me-1"></i>Benachrichtigt</span>
+                            <?php if (!empty($wl['token_expires'])): ?>
+                            <br><small class="text-muted">Bis: <?= date('d.m H:i', strtotime($wl['token_expires'])) ?></small>
+                            <?php endif; ?>
+                            <?php else: ?>
+                            <span class="badge bg-secondary">Wartend</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><small class="text-muted"><?= date('d.m.Y H:i', strtotime($wl['erstellt_am'])) ?></small></td>
+                        <td>
+                            <small class="text-muted">
+                                Platz <?= $i + 1 ?> in der Warteschlange
+                            </small>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
 </main>
 

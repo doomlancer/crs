@@ -176,6 +176,11 @@ include __DIR__ . '/../includes/header.php';
                                 <i class="bi bi-box-arrow-in-right me-2"></i>Anmelden
                             </button>
                         </div>
+                        <div class="text-center mt-3">
+                            <a href="/pages/passwort_reset.php" class="text-muted small text-decoration-none">
+                                <i class="bi bi-key me-1"></i>Passwort vergessen?
+                            </a>
+                        </div>
                     </form>
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
