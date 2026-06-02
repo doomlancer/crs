@@ -14,7 +14,7 @@ $userId = (int)$_SESSION['user_id'];
 
 // Buchbare Events (nicht abgerechnet, nicht vergangen)
 $events = $pdo->query(
-    "SELECT id, datum, name, preis, status
+    "SELECT id, datum, name, status
      FROM events
      WHERE status != 'abgerechnet' AND datum >= CURDATE()
      ORDER BY datum ASC"
@@ -27,7 +27,7 @@ $tische        = [];
 $meineRes      = []; // seat_id => ['reservation_id' => X, 'buchungsnummer' => Y]
 
 if ($eventId) {
-    $stmt = $pdo->prepare('SELECT * FROM events WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, datum, name, beschreibung, status FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
     $selectedEvent = $stmt->fetch() ?: null;
 
@@ -83,7 +83,7 @@ if ($eventId) {
     }
 }
 
-$ticketPreis  = (float)($selectedEvent['preis'] ?? TICKET_PREIS);
+$ticketPreis  = (float)TICKET_PREIS;
 $zahlungsart  = $_SESSION['zahlungsart'] ?? 'bar';
 $preisFormatiert = number_format($ticketPreis, 2, ',', '.');
 
