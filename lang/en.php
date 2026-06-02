@@ -94,4 +94,22 @@ return [
     'general.search'        => 'Search',
     'general.language_de'   => 'Deutsch',
     'general.language_en'   => 'English',
+
+    // Seating Plan
+    'seating.title'           => 'Seating Plan',
+    'seating.your_selection'  => 'Your Selection',
+    'seating.price_per_seat'  => 'Price / Seat',
+    'seating.payment'         => 'Payment Method',
+    'seating.hint'            => 'Tap a green seat to select it.',
+    'seating.reserve'         => 'Book Now',
+    'seating.my_seats'        => 'My Seats',
+    'seating.your_seats'      => 'Your Seats:',
+    'seating.no_tables'       => 'No tables have been configured for this event yet.',
+    'seating.select_event'    => 'Please select an event.',
+    'seating.legend_free'     => 'Free',
+    'seating.legend_selected' => 'Selected',
+    'seating.legend_mine'     => 'My Booking',
+    'seating.legend_occupied' => 'Occupied',
+    'seating.no_events'       => 'No bookable events available.',
+    'seating.cancel_seat'     => 'Cancel Seat %d',
 ];

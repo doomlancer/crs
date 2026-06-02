@@ -29,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name        = sanitize($_POST['name'] ?? '');
         $beschreibung = trim($_POST['beschreibung'] ?? '');
         $max_gaeste  = (int)($_POST['max_gaeste'] ?? 0);
+        $preis       = max(0.01, (float)str_replace(',', '.', $_POST['preis'] ?? '15'));
         $status      = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
                        ? $_POST['status'] : 'planung';
 
@@ -37,12 +38,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
 
         if (empty($errors)) {
-            $stmt = $pdo->prepare(
-                'INSERT INTO events (datum, name, beschreibung, max_gaeste, status) VALUES (?,?,?,?,?)'
-            );
-            $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status]);
+            try {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO events (datum, name, beschreibung, max_gaeste, preis, status) VALUES (?,?,?,?,?,?)'
+                );
+                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status]);
+            } catch (PDOException $e) {
+                // Fallback: preis-Spalte existiert noch nicht (Migration nicht gelaufen)
+                $stmt = $pdo->prepare(
+                    'INSERT INTO events (datum, name, beschreibung, max_gaeste, status) VALUES (?,?,?,?,?)'
+                );
+                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status]);
+            }
             $newId = (int)$pdo->lastInsertId();
-            logAudit('CREATE', 'events', $newId, json_encode(compact('datum','name','status','max_gaeste')));
+            logAudit('CREATE', 'events', $newId, json_encode(compact('datum','name','status','max_gaeste','preis')));
             setFlash('success', 'Event "' . htmlspecialchars($name) . '" wurde erfolgreich erstellt.');
             redirect('/pages/admin_events.php');
         }
@@ -55,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name        = sanitize($_POST['name'] ?? '');
         $beschreibung = trim($_POST['beschreibung'] ?? '');
         $max_gaeste  = (int)($_POST['max_gaeste'] ?? 0);
+        $preis       = max(0.01, (float)str_replace(',', '.', $_POST['preis'] ?? '15'));
         $status      = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
                        ? $_POST['status'] : 'planung';
 
@@ -63,11 +73,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
 
         if (empty($errors) && $id > 0) {
-            $stmt = $pdo->prepare(
-                'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, status=? WHERE id=?'
-            );
-            $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status, $id]);
-            logAudit('UPDATE', 'events', $id, json_encode(compact('datum','name','status','max_gaeste')));
+            try {
+                $stmt = $pdo->prepare(
+                    'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, preis=?, status=? WHERE id=?'
+                );
+                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status, $id]);
+            } catch (PDOException $e) {
+                $stmt = $pdo->prepare(
+                    'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, status=? WHERE id=?'
+                );
+                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status, $id]);
+            }
+            logAudit('UPDATE', 'events', $id, json_encode(compact('datum','name','status','max_gaeste','preis')));
             setFlash('success', 'Event wurde erfolgreich aktualisiert.');
             redirect('/pages/admin_events.php');
         }
@@ -497,6 +514,11 @@ include __DIR__ . '/../includes/navbar.php';
                            value="<?= (int)$editEvent['max_gaeste'] ?>" required>
                 </div>
                 <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Ticketpreis (€) <span class="text-danger">*</span></label>
+                    <input type="number" name="preis" class="form-control" step="0.01" min="0.01"
+                           value="<?= number_format((float)($editEvent['preis'] ?? TICKET_PREIS), 2, '.', '') ?>" required>
+                </div>
+                <div class="col-md-2">
                     <label class="form-label fw-semibold small">Status</label>
                     <select name="status" class="form-select">
                         <?php foreach (['planung','aktiv','abgerechnet'] as $s): ?>
@@ -551,6 +573,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <th>Datum</th>
                             <th>Name</th>
                             <th>Max. Gäste</th>
+                            <th>Preis</th>
                             <th>Tische</th>
                             <th>Sitze</th>
                             <th>Belegt</th>
@@ -580,6 +603,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <?php endif; ?>
                         </td>
                         <td><?= (int)$ev['max_gaeste'] ?></td>
+                        <td><?= formatBetrag((float)($ev['preis'] ?? TICKET_PREIS)) ?></td>
                         <td><span class="badge bg-secondary"><?= (int)$ev['tische_anzahl'] ?></span></td>
                         <td><?= $sitze ?></td>
                         <td>
@@ -741,6 +765,11 @@ include __DIR__ . '/../includes/navbar.php';
                         <div class="col-md-3">
                             <label class="form-label fw-semibold small">Max. Gäste <span class="text-danger">*</span></label>
                             <input type="number" name="max_gaeste" class="form-control" min="1" value="200" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold small">Ticketpreis (€) <span class="text-danger">*</span></label>
+                            <input type="number" name="preis" class="form-control" step="0.01" min="0.01"
+                                   value="<?= number_format((float)TICKET_PREIS, 2, '.', '') ?>" required>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold small">Status</label>

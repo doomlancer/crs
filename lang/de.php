@@ -94,4 +94,22 @@ return [
     'general.search'        => 'Suchen',
     'general.language_de'   => 'Deutsch',
     'general.language_en'   => 'English',
+
+    // Tischplan
+    'seating.title'           => 'Tischplan',
+    'seating.your_selection'  => 'Ihre Auswahl',
+    'seating.price_per_seat'  => 'Preis / Platz',
+    'seating.payment'         => 'Zahlungsart',
+    'seating.hint'            => 'Tippen Sie auf einen grünen Platz, um ihn auszuwählen.',
+    'seating.reserve'         => 'Jetzt reservieren',
+    'seating.my_seats'        => 'Meine Plätze',
+    'seating.your_seats'      => 'Ihre Plätze:',
+    'seating.no_tables'       => 'Für dieses Event wurden noch keine Tische konfiguriert.',
+    'seating.select_event'    => 'Bitte wählen Sie ein Event aus.',
+    'seating.legend_free'     => 'Frei',
+    'seating.legend_selected' => 'Ausgewählt',
+    'seating.legend_mine'     => 'Meine Buchung',
+    'seating.legend_occupied' => 'Belegt',
+    'seating.no_events'       => 'Keine buchbaren Veranstaltungen verfügbar.',
+    'seating.cancel_seat'     => 'Platz %d stornieren',
 ];

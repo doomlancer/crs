@@ -384,3 +384,15 @@ main { animation: pageFadeIn 0.3s ease; }
     body { background: white; }
     .card { box-shadow: none; border: 1px solid #ddd; }
 }
+
+/* ===== Tischplan Sitzplatz-Chips ===== */
+.seat-chip { display:inline-flex; align-items:center; justify-content:center; width:54px; height:54px; border-radius:10px; font-weight:700; font-size:1rem; border:2px solid transparent; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; cursor:default; line-height:1; }
+.seat-label { display:inline-block; margin:3px; cursor:pointer; -webkit-tap-highlight-color:transparent; line-height:1; }
+.seat-input { position:absolute; opacity:0; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); pointer-events:none; }
+.chip-free  { background:#22c55e; color:#fff; border-color:#16a34a; }
+.chip-taken { background:#e5e7eb; color:#9ca3af; border-color:#d1d5db; }
+.chip-mine  { background:#3b82f6; color:#fff; border-color:#2563eb; }
+.seat-input:checked + .seat-chip { background:#8b5cf6 !important; border-color:#7c3aed !important; color:#fff !important; }
+.table-card { border-left:3px solid #eab308; }
+.sticky-panel { position:sticky; top:76px; }
+.legend-dot { display:inline-block; width:18px; height:18px; border-radius:4px; vertical-align:middle; margin-right:4px; }

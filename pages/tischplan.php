@@ -83,11 +83,17 @@ if ($eventId) {
     }
 }
 
-$ticketPreis  = (float)TICKET_PREIS;
+try {
+    $stmtP = $pdo->prepare('SELECT COALESCE(preis, ?) FROM events WHERE id = ?');
+    $stmtP->execute([(float)TICKET_PREIS, $eventId]);
+    $ticketPreis = (float)($stmtP->fetchColumn() ?: TICKET_PREIS);
+} catch (PDOException $e) {
+    $ticketPreis = (float)TICKET_PREIS;
+}
 $zahlungsart  = $_SESSION['zahlungsart'] ?? 'bar';
 $preisFormatiert = number_format($ticketPreis, 2, ',', '.');
 
-$pageTitle = __('page_tischplan');
+$pageTitle = __('seating.title');
 $bodyClass = 'bg-light';
 
 $extraHead = '
@@ -164,20 +170,20 @@ include __DIR__ . '/../includes/navbar.php';
     <div class="row align-items-center mb-3">
         <div class="col">
             <h1 class="h3 fw-bold mb-0">
-                <i class="bi bi-grid-3x3 text-warning me-2"></i><?= __('page_tischplan') ?>
+                <i class="bi bi-grid-3x3 text-warning me-2"></i><?= __('seating.title') ?>
             </h1>
         </div>
         <div class="col-auto">
             <a href="/pages/events.php" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1"></i><?= __('page_events') ?>
+                <i class="bi bi-arrow-left me-1"></i><?= __('nav.events') ?>
             </a>
         </div>
     </div>
 
     <?php if (empty($events)): ?>
     <div class="alert alert-info">
-        <i class="bi bi-info-circle me-2"></i>Keine buchbaren Veranstaltungen verfügbar.
-        <a href="/pages/events.php" class="alert-link"><?= __('page_events') ?></a>
+        <i class="bi bi-info-circle me-2"></i><?= __('seating.no_events') ?>
+        <a href="/pages/events.php" class="alert-link"><?= __('nav.events') ?></a>
     </div>
 
     <?php else: ?>
@@ -210,7 +216,7 @@ include __DIR__ . '/../includes/navbar.php';
 
     <?php if (!$selectedEvent): ?>
     <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle me-2"></i><?= __('msg_select_event') ?>
+        <i class="bi bi-exclamation-triangle me-2"></i><?= __('seating.select_event') ?>
     </div>
 
     <?php else: ?>
@@ -247,26 +253,26 @@ include __DIR__ . '/../includes/navbar.php';
                         <small class="text-muted fw-semibold me-1">Legende:</small>
                         <span>
                             <span class="legend-dot" style="background:#22c55e;"></span>
-                            <small>Frei</small>
+                            <small><?= __('seating.legend_free') ?></small>
                         </span>
                         <span>
                             <span class="legend-dot" style="background:#8b5cf6;"></span>
-                            <small>Ausgewählt</small>
+                            <small><?= __('seating.legend_selected') ?></small>
                         </span>
                         <span>
                             <span class="legend-dot" style="background:#3b82f6;"></span>
-                            <small>Meine Buchung</small>
+                            <small><?= __('seating.legend_mine') ?></small>
                         </span>
                         <span>
                             <span class="legend-dot" style="background:#e5e7eb; border:1px solid #d1d5db;"></span>
-                            <small>Belegt</small>
+                            <small><?= __('seating.legend_occupied') ?></small>
                         </span>
                     </div>
                 </div>
 
                 <?php if (empty($tische)): ?>
                 <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle me-2"></i><?= __('msg_no_tables') ?>
+                    <i class="bi bi-exclamation-triangle me-2"></i><?= __('seating.no_tables') ?>
                 </div>
                 <?php else: ?>
 
@@ -330,11 +336,11 @@ include __DIR__ . '/../includes/navbar.php';
                             <?php if (!empty($eigeneSitzeHier)): ?>
                             <div class="card-footer bg-light py-2 px-2">
                                 <div class="small text-muted mb-1 fw-semibold">
-                                    <i class="bi bi-person-check text-primary me-1"></i>Ihre Plätze:
+                                    <i class="bi bi-person-check text-primary me-1"></i><?= __('seating.your_seats') ?>
                                 </div>
                                 <?php foreach ($eigeneSitzeHier as $es): ?>
                                 <form method="POST" action="/api/cancel_seat.php" class="d-inline"
-                                      onsubmit="return confirm('Platz <?= (int)$es['sitzplatznummer'] ?> an Tisch <?= (int)$tisch['tischnummer'] ?> wirklich stornieren?')">
+                                      onsubmit="return confirm('<?= htmlspecialchars(sprintf(__('seating.cancel_seat'), (int)$es['sitzplatznummer']), ENT_QUOTES) ?> – Tisch <?= (int)$tisch['tischnummer'] ?>?')">
                                     <?= csrfField() ?>
                                     <input type="hidden" name="reservation_id" value="<?= (int)$es['reservation_id'] ?>">
                                     <input type="hidden" name="event_id" value="<?= $eventId ?>">
@@ -358,19 +364,19 @@ include __DIR__ . '/../includes/navbar.php';
             <div class="col-lg-3">
                 <div class="card shadow sticky-panel">
                     <div class="card-header bg-warning text-dark fw-bold py-2">
-                        <i class="bi bi-cart3 me-2"></i><?= __('lbl_your_selection') ?>
+                        <i class="bi bi-cart3 me-2"></i><?= __('seating.your_selection') ?>
                     </div>
                     <div class="card-body">
 
                         <!-- Preis / Platz -->
                         <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded">
-                            <small class="text-muted"><?= __('lbl_price_per_seat') ?></small>
+                            <small class="text-muted"><?= __('seating.price_per_seat') ?></small>
                             <span class="fw-bold"><?= formatBetrag($ticketPreis) ?></span>
                         </div>
 
                         <!-- Zahlungsart -->
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <small class="text-muted"><?= __('lbl_payment') ?></small>
+                            <small class="text-muted"><?= __('seating.payment') ?></small>
                             <span class="badge bg-secondary">
                                 <?php
                                 echo match($zahlungsart) {
@@ -385,14 +391,14 @@ include __DIR__ . '/../includes/navbar.php';
                         <!-- Hinweis (initial sichtbar, JS blendet ihn aus) -->
                         <div id="noSelHint" class="text-center text-muted py-3">
                             <i class="bi bi-hand-index-thumb display-6 d-block mb-2"></i>
-                            <small><?= __('msg_click_seat') ?></small>
+                            <small><?= __('seating.hint') ?></small>
                         </div>
 
                         <!-- Auswahl-Zusammenfassung (JS-gesteuert) -->
                         <div id="selSummary" style="display:none;">
                             <div id="selList" class="mb-2"></div>
                             <div class="d-flex justify-content-between fw-bold border-top pt-2">
-                                <span><?= __('lbl_total') ?></span>
+                                <span><?= __('res.total') ?></span>
                                 <span id="selTotal" class="text-warning"></span>
                             </div>
                         </div>
@@ -405,7 +411,7 @@ include __DIR__ . '/../includes/navbar.php';
                         </noscript>
 
                         <button type="submit" class="btn btn-warning w-100 fw-bold mt-3">
-                            <i class="bi bi-check2-circle me-2"></i><?= __('btn_reserve_now') ?>
+                            <i class="bi bi-check2-circle me-2"></i><?= __('seating.reserve') ?>
                         </button>
 
                         <!-- Eigene bestehende Buchungen -->
@@ -414,7 +420,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <div class="small">
                             <div class="fw-semibold text-muted mb-2">
                                 <i class="bi bi-ticket-perforated text-primary me-1"></i>
-                                <?= __('lbl_my_seats') ?> (<?= count($meineRes) ?>):
+                                <?= __('seating.my_seats') ?> (<?= count($meineRes) ?>):
                             </div>
                             <?php foreach ($meineRes as $resInfo): ?>
                             <div class="mb-1">
@@ -422,7 +428,7 @@ include __DIR__ . '/../includes/navbar.php';
                             </div>
                             <?php endforeach; ?>
                             <a href="/pages/meine_reservierungen.php" class="btn btn-outline-primary btn-sm w-100 mt-1">
-                                <i class="bi bi-list-ul me-1"></i><?= __('page_my_bookings_title') ?>
+                                <i class="bi bi-list-ul me-1"></i><?= __('res.title') ?>
                             </a>
                         </div>
                         <?php endif; ?>

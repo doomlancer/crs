@@ -57,6 +57,15 @@ if ($action === 'reserve_auto') {
         redirect('/pages/tischplan.php?event_id=' . $eventId);
     }
 
+    // Event-spezifischen Preis laden (mit Fallback)
+    try {
+        $stmtP = $pdo->prepare('SELECT COALESCE(preis, ?) FROM events WHERE id = ?');
+        $stmtP->execute([(float)TICKET_PREIS, $eventId]);
+        $eventPreis = (float)($stmtP->fetchColumn() ?: TICKET_PREIS);
+    } catch (PDOException $e) {
+        $eventPreis = (float)TICKET_PREIS;
+    }
+
     try {
         $pdo->beginTransaction();
 
@@ -118,9 +127,9 @@ if ($action === 'reserve_auto') {
 
             foreach ($availSeats as $seatId) {
                 $bn = generateBuchungsnummer();
-                $stmtRes->execute([$userId, $eventId, $seatId, $bn, TICKET_PREIS]);
+                $stmtRes->execute([$userId, $eventId, $seatId, $bn, $eventPreis]);
                 $rid = (int)$pdo->lastInsertId();
-                $stmtPay->execute([$rid, $zahlungsart, TICKET_PREIS]);
+                $stmtPay->execute([$rid, $zahlungsart, $eventPreis]);
                 $stmtSeat->execute([$seatId]);
                 $buchungsnummern[] = $bn;
                 logAudit('RESERVIERUNG', 'reservations', $rid,
@@ -281,6 +290,15 @@ if (!$eventId) {
     redirect('/pages/tischplan.php');
 }
 
+// Event-spezifischen Preis laden (mit Fallback)
+try {
+    $stmtP = $pdo->prepare('SELECT COALESCE(preis, ?) FROM events WHERE id = ?');
+    $stmtP->execute([(float)TICKET_PREIS, $eventId]);
+    $eventPreis = (float)($stmtP->fetchColumn() ?: TICKET_PREIS);
+} catch (PDOException $e) {
+    $eventPreis = (float)TICKET_PREIS;
+}
+
 // seat_ids[] Array (Checkbox-Formular) oder kommagetrennt (Legacy)
 $rawIds = $_POST['seat_ids'] ?? '';
 if (is_array($rawIds)) {
@@ -375,11 +393,11 @@ try {
     $buchungsnummern = [];
     foreach ($seatIds as $seatId) {
         $buchungsnummer = generateBuchungsnummer();
-        $stmtRes->execute([$userId, $eventId, $seatId, $buchungsnummer, TICKET_PREIS]);
+        $stmtRes->execute([$userId, $eventId, $seatId, $buchungsnummer, $eventPreis]);
         $reservationId = (int)$pdo->lastInsertId();
 
-        $payStatus = $userZahlungsart === 'bar' ? 'offen' : 'offen';
-        $stmtPay->execute([$reservationId, $userZahlungsart, TICKET_PREIS, $payStatus]);
+        $payStatus = 'offen';
+        $stmtPay->execute([$reservationId, $userZahlungsart, $eventPreis, $payStatus]);
         $stmtSeat->execute([$seatId]);
 
         $buchungsnummern[] = $buchungsnummer;
