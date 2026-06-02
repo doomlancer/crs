@@ -20,7 +20,14 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
     redirect('/pages/kassierer_dashboard.php');
 }
 
-$reservationId = (int)($_POST['reservation_id'] ?? 0);
+$reservationId  = (int)($_POST['reservation_id'] ?? 0);
+$buchungsnummer = trim($_POST['buchungsnummer'] ?? '');
+if (!$reservationId && $buchungsnummer) {
+    $pdo  = getDB();
+    $stmt = $pdo->prepare('SELECT id FROM reservations WHERE buchungsnummer = ?');
+    $stmt->execute([$buchungsnummer]);
+    $reservationId = (int)($stmt->fetchColumn() ?: 0);
+}
 if (!$reservationId) {
     if (isAjax()) jsonResponse(['success' => false, 'message' => 'Ungültige ID', 'data' => null], 400);
     setFlash('error', 'Ungültige Reservierungs-ID.');

@@ -185,6 +185,25 @@ include __DIR__ . '/../includes/navbar.php';
                                     <?php else: ?>
                                     <span class="text-muted small">–</span>
                                     <?php endif; ?>
+                                    <?php if (($res['zahlungsart'] ?? '') === 'paypal' && ($res['payment_status'] ?? '') === 'offen'): ?>
+                                    <form action="<?= PAYPAL_SANDBOX ? 'https://www.sandbox.paypal.com/cgi-bin/webscr' : 'https://www.paypal.com/cgi-bin/webscr' ?>" method="post" target="_blank" class="mt-1">
+                                        <input type="hidden" name="cmd"           value="_xclick">
+                                        <input type="hidden" name="business"      value="<?= htmlspecialchars(PAYPAL_EMAIL) ?>">
+                                        <input type="hidden" name="item_name"     value="<?= htmlspecialchars($res['event_name'] . ' – ' . $res['buchungsnummer']) ?>">
+                                        <input type="hidden" name="item_number"   value="<?= htmlspecialchars($res['buchungsnummer']) ?>">
+                                        <input type="hidden" name="amount"        value="<?= number_format((float)($res['betrag'] ?? 0), 2, '.', '') ?>">
+                                        <input type="hidden" name="currency_code" value="EUR">
+                                        <input type="hidden" name="return"        value="<?= APP_URL ?>/pages/meine_reservierungen.php">
+                                        <input type="hidden" name="cancel_return" value="<?= APP_URL ?>/pages/meine_reservierungen.php">
+                                        <input type="hidden" name="notify_url"    value="<?= APP_URL ?>/api/paypal_ipn.php">
+                                        <input type="hidden" name="custom"        value="<?= htmlspecialchars($res['buchungsnummer']) ?>">
+                                        <input type="hidden" name="no_shipping"   value="1">
+                                        <input type="hidden" name="lc"            value="DE">
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-paypal me-1"></i>Mit PayPal bezahlen
+                                        </button>
+                                    </form>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <!-- Detail-Zeile mit QR-Code -->

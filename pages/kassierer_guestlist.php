@@ -20,6 +20,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reservationId = (int)($_POST['reservation_id'] ?? 0);
         $redirectEventId = (int)($_POST['event_id'] ?? 0);
 
+        if ($action === 'bulk_checkin') {
+            $ids = array_values(array_filter(array_map('intval', $_POST['reservation_ids'] ?? [])));
+            $ok  = 0;
+            foreach ($ids as $rid) {
+                try {
+                    $stmtR = $pdo->prepare(
+                        'SELECT r.id, r.seat_id, r.status, r.buchungsnummer, u.vorname, u.nachname
+                         FROM reservations r JOIN users u ON u.id = r.user_id WHERE r.id = ?'
+                    );
+                    $stmtR->execute([$rid]);
+                    $row = $stmtR->fetch();
+                    if (!$row || $row['status'] === 'eingecheckt') continue;
+                    $pdo->beginTransaction();
+                    $pdo->prepare('UPDATE reservations SET status = ? WHERE id = ?')->execute(['eingecheckt', $rid]);
+                    $pdo->prepare('UPDATE seats SET status = ? WHERE id = ?')->execute(['besetzt', $row['seat_id']]);
+                    $pdo->commit();
+                    logAudit('CHECK_IN', 'reservations', $rid,
+                        json_encode(['buchungsnummer' => $row['buchungsnummer'], 'gast' => $row['vorname'] . ' ' . $row['nachname']]));
+                    $ok++;
+                } catch (Exception $ex) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    error_log('Bulk-Checkin Fehler rid=' . $rid . ': ' . $ex->getMessage());
+                }
+            }
+            setFlash($ok > 0 ? 'success' : 'warning', $ok . ' Gast/Gäste erfolgreich eingecheckt.');
+            $eid = (int)($_POST['event_id'] ?? 0);
+            redirect('/pages/kassierer_guestlist.php' . ($eid ? '?event_id=' . $eid : ''));
+        }
+
         if ($reservationId > 0 && in_array($action, ['checkin', 'bezahlt'], true)) {
             try {
                 // Reservierung + Zahlung laden
@@ -313,8 +342,16 @@ include __DIR__ . '/../includes/navbar.php';
                 <i class="bi bi-list-ul me-2 text-warning"></i>Gäste
                 <span class="badge bg-secondary ms-1"><?= $totalGaeste ?></span>
             </h5>
-            <?php if ($selectedEventId): ?>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <?php if ($selectedEventId): ?>
+                <form method="POST" id="bulkForm" class="d-inline">
+                    <?= csrfField() ?>
+                    <input type="hidden" name="action"   value="bulk_checkin">
+                    <input type="hidden" name="event_id" value="<?= $selectedEventId ?>">
+                    <button type="submit" id="bulkBtn" disabled class="btn btn-success btn-sm">
+                        <i class="bi bi-check-all me-1"></i>Ausgewählte einchecken (<span id="selCount">0</span>)
+                    </button>
+                </form>
                 <span class="text-muted small align-self-center">Export:</span>
                 <a href="/api/export_guestlist.php?event_id=<?= $selectedEventId ?>&format=csv"
                    class="btn btn-outline-success btn-sm">
@@ -324,8 +361,8 @@ include __DIR__ . '/../includes/navbar.php';
                    class="btn btn-outline-danger btn-sm">
                     <i class="bi bi-filetype-pdf me-1"></i>PDF
                 </a>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
         </div>
 
         <div class="card-body p-0">
@@ -346,7 +383,9 @@ include __DIR__ . '/../includes/navbar.php';
                 <table class="table table-hover align-middle mb-0 small">
                     <thead class="table-dark">
                         <tr>
-                            <th class="ps-3">#</th>
+                            <th class="ps-3">
+                                <input type="checkbox" id="selectAll" class="form-check-input" title="Alle auswählen">
+                            </th>
                             <th>Buchungsnr.</th>
                             <th>Name</th>
                             <th>Sitz</th>
@@ -360,8 +399,15 @@ include __DIR__ . '/../includes/navbar.php';
                     <?php foreach ($gaeste as $i => $g): ?>
                     <tr class="<?= $g['res_status'] === 'eingecheckt' ? 'table-success' : '' ?>">
 
-                        <!-- Lfd. Nr. -->
-                        <td class="ps-3 text-muted"><?= $i + 1 ?></td>
+                        <!-- Checkbox für Bulk-Checkin -->
+                        <td class="ps-3">
+                            <input type="checkbox"
+                                   name="reservation_ids[]"
+                                   value="<?= (int)$g['id'] ?>"
+                                   class="form-check-input row-check"
+                                   form="bulkForm"
+                                   <?= $g['res_status'] === 'eingecheckt' ? 'disabled' : '' ?>>
+                        </td>
 
                         <!-- Buchungsnummer -->
                         <td>
@@ -515,5 +561,37 @@ include __DIR__ . '/../includes/navbar.php';
 </main>
 
 <?php
-$extraScripts = '';
+$extraScripts = <<<'HTML'
+<script>
+(function() {
+    var selectAll = document.getElementById('selectAll');
+    var bulkBtn   = document.getElementById('bulkBtn');
+    var selCount  = document.getElementById('selCount');
+    if (!selectAll) return;
+
+    function updateBulk() {
+        var checked = document.querySelectorAll('.row-check:not([disabled]):checked').length;
+        selCount.textContent = checked;
+        bulkBtn.disabled = checked === 0;
+    }
+
+    selectAll.addEventListener('change', function() {
+        document.querySelectorAll('.row-check:not([disabled])').forEach(function(cb) {
+            cb.checked = selectAll.checked;
+        });
+        updateBulk();
+    });
+
+    document.querySelectorAll('.row-check').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var allEnabled  = document.querySelectorAll('.row-check:not([disabled])');
+            var allChecked  = document.querySelectorAll('.row-check:not([disabled]):checked');
+            selectAll.indeterminate = allChecked.length > 0 && allChecked.length < allEnabled.length;
+            selectAll.checked = allChecked.length === allEnabled.length && allEnabled.length > 0;
+            updateBulk();
+        });
+    });
+})();
+</script>
+HTML;
 include __DIR__ . '/../includes/footer.php';

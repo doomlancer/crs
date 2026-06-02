@@ -104,3 +104,6 @@ if (isset($_SESSION['letzte_aktivitaet'])) {
     }
 }
 $_SESSION['letzte_aktivitaet'] = time();
+
+define('PAYPAL_EMAIL',   $_ENV['PAYPAL_EMAIL']   ?? 'marc.gunit@gmail.com');
+define('PAYPAL_SANDBOX', (bool)($_ENV['PAYPAL_SANDBOX'] ?? false));

@@ -55,6 +55,9 @@ $currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
                         <li><a class="dropdown-item" href="/pages/kassierer_statistiken.php">
                             <i class="bi bi-bar-chart"></i> Statistiken
                         </a></li>
+                        <li><a class="dropdown-item" href="/pages/kassierer_scan.php">
+                            <i class="bi bi-qr-code-scan"></i> QR-Scanner
+                        </a></li>
                     </ul>
                 </li>
                 <?php endif; ?>

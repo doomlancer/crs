@@ -202,6 +202,9 @@ include __DIR__ . '/../includes/navbar.php';
                class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-bar-chart me-1"></i>Statistiken
             </a>
+            <a href="/pages/kassierer_scan.php" class="btn btn-warning btn-sm">
+                <i class="bi bi-qr-code-scan me-1"></i>QR-Scanner
+            </a>
         </div>
     </div>
 
