@@ -1,7 +1,4 @@
 <?php
-/**
- * Meine Reservierungen - Übersicht für eingeloggte Benutzer
- */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -11,7 +8,6 @@ requireLogin();
 $pdo    = getDB();
 $userId = (int)$_SESSION['user_id'];
 
-// Reservierungen laden (neueste zuerst)
 $stmt = $pdo->prepare(
     'SELECT r.id, r.buchungsnummer, r.status, r.preis, r.erstellt_am,
             e.name AS event_name, e.datum AS event_datum,
@@ -29,23 +25,10 @@ $stmt = $pdo->prepare(
 $stmt->execute([$userId]);
 $reservierungen = $stmt->fetchAll();
 
-// Statistiken
-$gesamt     = count($reservierungen);
-$geplant    = count(array_filter($reservierungen, fn($r) => $r['status'] === 'geplant'));
-$eingecheckt = count(array_filter($reservierungen, fn($r) => $r['status'] === 'eingecheckt'));
+$gesamt       = count($reservierungen);
+$geplant      = count(array_filter($reservierungen, fn($r) => $r['status'] === 'geplant'));
+$eingecheckt  = count(array_filter($reservierungen, fn($r) => $r['status'] === 'eingecheckt'));
 $gesamtBetrag = array_sum(array_column($reservierungen, 'betrag'));
-
-// Wartelisten-Einträge laden
-$stmtWl = $pdo->prepare(
-    "SELECT w.id, w.status, w.erstellt_am, w.token_expires,
-            e.name AS event_name, e.datum AS event_datum, e.id AS event_id
-     FROM waitinglist w
-     JOIN events e ON w.event_id = e.id
-     WHERE w.user_id = ? AND w.status IN ('wartend','benachrichtigt')
-     ORDER BY w.erstellt_am DESC"
-);
-$stmtWl->execute([$userId]);
-$warteliste = $stmtWl->fetchAll();
 
 $pageTitle = __('page_my_bookings_title');
 include __DIR__ . '/../includes/header.php';
@@ -61,7 +44,6 @@ include __DIR__ . '/../includes/navbar.php';
                 <h2 class="fw-bold">
                     <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('page_my_bookings_title') ?>
                 </h2>
-                <p class="text-muted"><?= __('events_subtitle') ?></p>
             </div>
         </div>
 
@@ -106,15 +88,13 @@ include __DIR__ . '/../includes/navbar.php';
             <div class="card-body text-center py-5">
                 <i class="bi bi-calendar-x display-3 text-muted d-block mb-3"></i>
                 <h5 class="text-muted"><?= __('lbl_no_bookings') ?></h5>
-                <p class="text-muted"><?= __('lbl_no_bookings') ?></p>
-                <a href="/pages/events.php" class="btn btn-warning">
+                <a href="/pages/events.php" class="btn btn-warning mt-3">
                     <i class="bi bi-calendar-event me-2"></i><?= __('page_events') ?>
                 </a>
             </div>
         </div>
         <?php else: ?>
 
-        <!-- Reservierungen Tabelle -->
         <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -129,7 +109,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <th><?= __('lbl_price') ?></th>
                                 <th><?= __('lbl_status') ?></th>
                                 <th><?= __('lbl_payment_status') ?></th>
-                                <th><?= __('lbl_status') ?></th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -146,7 +126,8 @@ include __DIR__ . '/../includes/navbar.php';
                                 </td>
                                 <td>
                                     <i class="bi bi-grid text-muted me-1"></i>
-                                    Tisch <strong><?= $res['tischnummer'] ?></strong>, Platz <strong><?= $res['sitzplatznummer'] ?></strong>
+                                    Tisch <strong><?= $res['tischnummer'] ?></strong>,
+                                    Platz <strong><?= $res['sitzplatznummer'] ?></strong>
                                 </td>
                                 <td>
                                     <?php
@@ -163,27 +144,12 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td><?= statusBadge($res['status']) ?></td>
                                 <td><?= statusBadge($res['payment_status'] ?? 'offen') ?></td>
                                 <td>
-                                    <div class="d-flex gap-1 flex-wrap">
-                                        <a href="/pages/buchung_detail.php?buchungsnummer=<?= urlencode($res['buchungsnummer']) ?>"
-                                           class="btn btn-outline-warning btn-sm" title="<?= __('btn_view_ticket') ?>">
-                                            <i class="bi bi-qr-code"></i>
-                                        </a>
-                                        <?php if ($res['status'] === 'geplant'): ?>
-                                        <form method="POST" action="/api/reserve_seat.php"
-                                              onsubmit="return confirm('<?= addslashes(__('confirm_cancel')) ?>')">
-                                            <?= csrfField() ?>
-                                            <input type="hidden" name="action" value="cancel">
-                                            <input type="hidden" name="event_id" value="">
-                                            <input type="hidden" name="reservation_id" value="<?= $res['id'] ?>">
-                                            <button type="submit" class="btn btn-outline-danger btn-sm" title="<?= __('btn_cancel_booking') ?>">
-                                                <i class="bi bi-x-circle"></i>
-                                            </button>
-                                        </form>
-                                        <?php endif; ?>
-                                    </div>
+                                    <a href="/pages/buchung_detail.php?buchungsnummer=<?= urlencode($res['buchungsnummer']) ?>"
+                                       class="btn btn-outline-warning btn-sm" title="<?= __('btn_view_ticket') ?>">
+                                        <i class="bi bi-qr-code"></i>
+                                    </a>
                                 </td>
                             </tr>
-                            <!-- Detail-Zeile mit Buchungsnummer zum Drucken -->
                             <tr class="bg-light">
                                 <td colspan="9" class="py-1">
                                     <small class="text-muted">
@@ -207,88 +173,14 @@ include __DIR__ . '/../includes/navbar.php';
 
         <?php endif; ?>
 
-        <?php if (!empty($warteliste)): ?>
-        <!-- Warteliste -->
-        <div class="card border-0 shadow-sm mt-4">
-            <div class="card-header bg-dark text-white d-flex align-items-center border-0 py-3">
-                <i class="bi bi-hourglass-split text-warning me-2"></i>
-                <span class="fw-semibold"><?= __('lbl_waitinglist') ?></span>
-                <span class="badge bg-warning text-dark ms-2"><?= count($warteliste) ?></span>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-secondary">
-                        <tr>
-                            <th><?= __('lbl_event') ?></th>
-                            <th><?= __('lbl_date') ?></th>
-                            <th><?= __('lbl_status') ?></th>
-                            <th><?= __('lbl_booked_at') ?></th>
-                            <th><?= __('lbl_status') ?></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($warteliste as $wl): ?>
-                        <tr>
-                            <td class="fw-semibold"><?= htmlspecialchars($wl['event_name']) ?></td>
-                            <td>
-                                <span class="badge bg-warning text-dark">
-                                    <?= formatDatum($wl['event_datum']) ?>
-                                </span>
-                            </td>
-                            <td>
-                                <?php if ($wl['status'] === 'benachrichtigt'): ?>
-                                <span class="badge bg-success">
-                                    <i class="bi bi-bell-fill me-1"></i>Platz verfügbar!
-                                </span>
-                                <?php if (!empty($wl['token_expires'])): ?>
-                                <br><small class="text-muted">Noch bis: <?= date('d.m.Y H:i', strtotime($wl['token_expires'])) ?></small>
-                                <?php endif; ?>
-                                <?php else: ?>
-                                <span class="badge bg-secondary">
-                                    <i class="bi bi-hourglass me-1"></i>Wartend
-                                </span>
-                                <?php endif; ?>
-                            </td>
-                            <td><small class="text-muted"><?= date('d.m.Y H:i', strtotime($wl['erstellt_am'])) ?></small></td>
-                            <td>
-                                <div class="d-flex gap-1">
-                                    <?php if ($wl['status'] === 'benachrichtigt'): ?>
-                                    <a href="/pages/tischplan.php?event_id=<?= $wl['event_id'] ?>"
-                                       class="btn btn-success btn-sm fw-semibold">
-                                        <i class="bi bi-grid-3x3 me-1"></i><?= __('btn_choose_seat') ?>
-                                    </a>
-                                    <?php endif; ?>
-                                    <form method="POST" action="/api/leave_waitinglist.php"
-                                          onsubmit="return confirm('<?= addslashes(__('btn_leave_waitinglist')) ?>')" >
-                                        <?= csrfField() ?>
-                                        <input type="hidden" name="waitinglist_id" value="<?= $wl['id'] ?>">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <?php endif; ?>
-
         <!-- Quick Actions -->
         <div class="row mt-4 g-3">
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <a href="/pages/events.php" class="btn btn-outline-warning w-100">
-                    <i class="bi bi-calendar-event me-2"></i>Neue Reservierung
+                    <i class="bi bi-calendar-event me-2"></i>Veranstaltungen
                 </a>
             </div>
-            <div class="col-md-4">
-                <a href="/pages/tischplan.php" class="btn btn-outline-secondary w-100">
-                    <i class="bi bi-grid-3x3 me-2"></i>Zum Tischplan
-                </a>
-            </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <a href="/pages/profil.php" class="btn btn-outline-primary w-100">
                     <i class="bi bi-person me-2"></i>Mein Profil
                 </a>

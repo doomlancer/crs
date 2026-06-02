@@ -32,12 +32,6 @@ $currentLang = $_SESSION['lang'] ?? 'de';
 
                 <?php if (isLoggedIn()): ?>
                 <li class="nav-item">
-                    <a class="nav-link <?= $currentPage === 'tischplan.php' ? 'active' : '' ?>"
-                       href="/pages/tischplan.php">
-                        <i class="bi bi-grid-3x3"></i> <?= __('nav_tischplan') ?>
-                    </a>
-                </li>
-                <li class="nav-item">
                     <a class="nav-link <?= $currentPage === 'meine_reservierungen.php' ? 'active' : '' ?>"
                        href="/pages/meine_reservierungen.php">
                         <i class="bi bi-ticket-perforated"></i> <?= __('nav_my_bookings') ?>
