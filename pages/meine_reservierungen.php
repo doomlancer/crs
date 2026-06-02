@@ -9,7 +9,7 @@ $pdo    = getDB();
 $userId = (int)$_SESSION['user_id'];
 
 $stmt = $pdo->prepare(
-    'SELECT r.id, r.buchungsnummer, r.status, r.preis, r.erstellt_am,
+    'SELECT r.id, r.buchungsnummer, r.status, r.preis, r.erstellt_am, r.event_id,
             e.name AS event_name, e.datum AS event_datum,
             t.tischnummer,
             s.sitzplatznummer,
@@ -143,11 +143,22 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td class="fw-bold"><?= formatBetrag((float)($res['betrag'] ?? 0)) ?></td>
                                 <td><?= statusBadge($res['status']) ?></td>
                                 <td><?= statusBadge($res['payment_status'] ?? 'offen') ?></td>
-                                <td>
+                                <td class="text-nowrap">
                                     <a href="/pages/buchung_detail.php?buchungsnummer=<?= urlencode($res['buchungsnummer']) ?>"
-                                       class="btn btn-outline-warning btn-sm" title="<?= __('btn_view_ticket') ?>">
+                                       class="btn btn-outline-warning btn-sm me-1" title="<?= __('btn_view_ticket') ?>">
                                         <i class="bi bi-qr-code"></i>
                                     </a>
+                                    <?php if ($res['status'] === 'geplant'): ?>
+                                    <form method="POST" action="/api/cancel_seat.php" class="d-inline"
+                                          onsubmit="return confirm('Buchung <?= htmlspecialchars(addslashes($res['buchungsnummer'])) ?> wirklich stornieren?')">
+                                        <?= csrfField() ?>
+                                        <input type="hidden" name="reservation_id" value="<?= (int)$res['id'] ?>">
+                                        <input type="hidden" name="event_id" value="<?= (int)$res['event_id'] ?>">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm" title="<?= __('btn_cancel') ?>">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                    </form>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <tr class="bg-light">

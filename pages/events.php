@@ -249,14 +249,15 @@ include __DIR__ . '/../includes/navbar.php';
                             </button>
 
                         <?php elseif (isLoggedIn()): ?>
-                            <button class="btn btn-outline-secondary w-100" disabled>
-                                <i class="bi bi-tools me-1"></i>Reservierung folgt
-                            </button>
+                            <a href="/pages/tischplan.php?event_id=<?= (int)$event['id'] ?>"
+                               class="btn btn-warning w-100 fw-semibold">
+                                <i class="bi bi-grid-3x3 me-1"></i><?= __('btn_to_seating') ?>
+                            </a>
 
                         <?php else: ?>
-                            <button class="btn btn-outline-secondary w-100" disabled>
-                                <i class="bi bi-tools me-1"></i>Reservierung folgt
-                            </button>
+                            <a href="/pages/login.php" class="btn btn-outline-warning w-100">
+                                <i class="bi bi-box-arrow-in-right me-1"></i><?= __('nav_login') ?> &amp; reservieren
+                            </a>
                         <?php endif; ?>
                     </div>
 
