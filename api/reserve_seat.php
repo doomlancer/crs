@@ -123,18 +123,23 @@ if (!$eventId) {
     redirect('/pages/tischplan.php');
 }
 
-$seatIdsRaw = trim($_POST['seat_ids'] ?? '');
-if (empty($seatIdsRaw)) {
+// Accept both: seat_ids[] checkbox array (new) and seat_ids comma-string (legacy)
+if (isset($_POST['seat_ids']) && is_array($_POST['seat_ids'])) {
+    $seatIds = array_values(array_unique(array_filter(
+        array_map('intval', $_POST['seat_ids']),
+        fn($id) => $id > 0
+    )));
+} else {
+    $seatIds = array_values(array_unique(array_filter(
+        array_map('intval', explode(',', (string)($_POST['seat_ids'] ?? ''))),
+        fn($id) => $id > 0
+    )));
+}
+
+if (empty($seatIds)) {
     setFlash('error', 'Bitte wählen Sie mindestens einen Sitzplatz aus.');
     redirect('/pages/tischplan.php?event_id=' . $eventId);
 }
-
-// Seat-IDs parsen und validieren (nur positive Integer)
-$seatIds = array_filter(
-    array_map('intval', explode(',', $seatIdsRaw)),
-    fn($id) => $id > 0
-);
-$seatIds = array_unique($seatIds);
 
 if (empty($seatIds) || count($seatIds) > 10) {
     setFlash('error', 'Ungültige Sitzplatz-Auswahl (max. 10 Plätze pro Buchung).');
