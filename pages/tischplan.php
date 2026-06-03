@@ -199,7 +199,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <i class="bi bi-calendar3 text-warning me-1"></i>Event:
                         </label>
                         <select name="event_id" id="eventSelect" class="form-select form-select-sm"
-                                onchange="this.form.submit()">
+                                onchange="window.location.href='/pages/tischplan.php?event_id='+encodeURIComponent(this.value)">
                             <?php foreach ($events as $ev): ?>
                             <option value="<?= (int)$ev['id'] ?>"
                                     <?= (int)$ev['id'] === $eventId ? 'selected' : '' ?>>
