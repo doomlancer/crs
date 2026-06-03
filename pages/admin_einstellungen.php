@@ -11,6 +11,33 @@ $pdo = getDB();
 
 $errors = [];
 
+// ─── Migration-Check: settings-Tabelle muss existieren ────────────────────────
+if (!settingsTableExists()) {
+    $pageTitle = 'Design & Einstellungen';
+    include __DIR__ . '/../includes/header.php';
+    include __DIR__ . '/../includes/navbar.php';
+    ?>
+    <main class="container py-5">
+        <div class="alert alert-warning shadow-sm">
+            <h2 class="h5 fw-bold">
+                <i class="bi bi-exclamation-triangle me-2"></i>Migration erforderlich
+            </h2>
+            <p class="mb-2">
+                Die Tabelle <code>settings</code> existiert noch nicht. Bitte führen Sie die
+                ausstehende Migration <code>005_settings.sql</code> aus, bevor Sie diese Seite nutzen.
+            </p>
+            <ol class="mb-0">
+                <li><code>migrate_web.php</code> per FTP hochladen (falls nicht vorhanden).</li>
+                <li>Als Admin im Browser <code>/migrate_web.php</code> aufrufen und ausführen.</li>
+                <li><code>migrate_web.php</code> anschließend wieder löschen.</li>
+            </ol>
+        </div>
+    </main>
+    <?php
+    include __DIR__ . '/../includes/footer.php';
+    exit;
+}
+
 // ─── POST-Handler ─────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {

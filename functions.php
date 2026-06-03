@@ -441,3 +441,16 @@ function getAllSettings(): array {
         return [];
     }
 }
+
+function settingsTableExists(): bool {
+    static $exists = null;
+    if ($exists === null) {
+        try {
+            getDB()->query('SELECT 1 FROM settings LIMIT 1');
+            $exists = true;
+        } catch (PDOException $e) {
+            $exists = false;
+        }
+    }
+    return $exists;
+}
