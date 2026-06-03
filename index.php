@@ -40,18 +40,32 @@ include __DIR__ . '/includes/navbar.php';
         <div class="hero-overlay">
             <div class="container text-center py-5">
                 <div class="hero-content">
+                    <?php
+                    $heroLogo = getSetting('app_logo', '');
+                    $heroLogoSrc = ($heroLogo && file_exists(UPLOAD_DIR . $heroLogo))
+                        ? '/uploads/' . htmlspecialchars($heroLogo)
+                        : null;
+                    $heroName = getSetting('app_name', APP_NAME);
+                    $heroSlogan = getSetting('app_slogan', '');
+                    $heroDash = strrpos($heroName, '-');
+                    $heroNameA = $heroDash !== false ? substr($heroName, 0, $heroDash) : $heroName;
+                    $heroNameB = $heroDash !== false ? substr($heroName, $heroDash)    : '';
+                    ?>
+                    <?php if ($heroLogoSrc): ?>
                     <div class="mb-3">
-                        <img src="https://image.jimcdn.com/app/cms/image/transf/dimension=115x1024:format=jpg/path/s4cea4c34b6ccc3a8/image/icfeaef9396ebbdc4/version/1568056565/image.jpg"
-                             alt="F.C.G. Die Kameruner"
-                             style="width:100px;height:100px;object-fit:contain;border-radius:50%;border:3px solid #cf2e2e;background:#fff;"
-                             onerror="this.outerHTML='<i class=\'bi bi-people-fill display-1\' style=\'color:#cf2e2e\'></i>'">
+                        <img src="<?= $heroLogoSrc ?>"
+                             alt="<?= htmlspecialchars($heroName) ?>"
+                             style="width:100px;height:100px;object-fit:contain;border-radius:50%;border:3px solid var(--club-red);background:#fff;">
                     </div>
+                    <?php endif; ?>
                     <h1 class="display-4 fw-bold text-white mb-3">
-                        Kameruner<span class="text-warning">-Tickets</span>
+                        <?= htmlspecialchars($heroNameA) ?><span class="text-warning"><?= htmlspecialchars($heroNameB) ?></span>
                     </h1>
                     <p class="lead text-white-50 mb-4">
-                        Sichern Sie sich Ihren Platz bei den unvergesslichen Veranstaltungen!<br>
-                        Einfach online reservieren, bequem bezahlen und den Spaß genießen.
+                        <?= $heroSlogan
+                            ? htmlspecialchars($heroSlogan)
+                            : 'Sichern Sie sich Ihren Platz bei den unvergesslichen Veranstaltungen!<br>Einfach online reservieren, bequem bezahlen und den Spaß genießen.'
+                        ?>
                     </p>
                     <div class="d-flex gap-3 justify-content-center flex-wrap">
                         <a href="/pages/events.php" class="btn btn-warning btn-lg px-4">

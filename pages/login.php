@@ -64,12 +64,20 @@ include __DIR__ . '/../includes/header.php';
         <div class="col-12 col-sm-10 col-md-8 col-lg-5 col-xl-4">
 
             <!-- Logo / App-Name -->
+            <?php
+            $loginLogo = getSetting('app_logo', '');
+            $loginLogoSrc = ($loginLogo && file_exists(UPLOAD_DIR . $loginLogo))
+                ? '/uploads/' . htmlspecialchars($loginLogo)
+                : null;
+            $loginAppName = getSetting('app_name', APP_NAME);
+            ?>
             <div class="text-center mb-4">
                 <a href="/index.php" class="text-decoration-none">
-                    <img src="https://image.jimcdn.com/app/cms/image/transf/dimension=115x1024:format=jpg/path/s4cea4c34b6ccc3a8/image/icfeaef9396ebbdc4/version/1568056565/image.jpg"
-                         alt="F.C.G. Die Kameruner" class="auth-logo"
-                         onerror="this.style.display='none'">
-                    <h1 class="h4 text-white fw-bold mt-2"><?= htmlspecialchars(APP_NAME) ?></h1>
+                    <?php if ($loginLogoSrc): ?>
+                    <img src="<?= $loginLogoSrc ?>"
+                         alt="<?= htmlspecialchars($loginAppName) ?>" class="auth-logo">
+                    <?php endif; ?>
+                    <h1 class="h4 text-white fw-bold mt-2"><?= htmlspecialchars($loginAppName) ?></h1>
                 </a>
             </div>
 

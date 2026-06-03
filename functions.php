@@ -407,3 +407,37 @@ function sendWaitlistNotification(string $email, string $vorname, string $eventN
     $body    = "Hallo {$vorname},\n\nein Platz für das Event \"{$eventName}\" ist frei geworden!\nBitte reservieren Sie jetzt: {$tischUrl}\n\nViele Grüße\nIhr " . APP_NAME;
     return mail($email, $subject, $body, 'From: ' . ($_ENV['SMTP_USER'] ?? 'noreply@localhost'));
 }
+
+// =====================
+// Design-Einstellungen
+// =====================
+
+function getSetting(string $key, string $default = ''): string {
+    static $cache = null;
+    if ($cache === null) {
+        try {
+            $rows  = getDB()->query('SELECT setting_key, setting_value FROM settings')->fetchAll();
+            $cache = array_column($rows, 'setting_value', 'setting_key');
+        } catch (PDOException $e) {
+            $cache = [];
+        }
+    }
+    return (string)($cache[$key] ?? $default);
+}
+
+function setSetting(string $key, string $value): void {
+    getDB()->prepare(
+        'INSERT INTO settings (setting_key, setting_value) VALUES (?,?)
+         ON DUPLICATE KEY UPDATE setting_value = ?'
+    )->execute([$key, $value, $value]);
+    // Cache is per-request; after save we always redirect, so stale cache is irrelevant.
+}
+
+function getAllSettings(): array {
+    try {
+        $rows = getDB()->query('SELECT setting_key, setting_value FROM settings')->fetchAll();
+        return array_column($rows, 'setting_value', 'setting_key');
+    } catch (PDOException $e) {
+        return [];
+    }
+}

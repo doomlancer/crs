@@ -4,14 +4,13 @@
 ErrorDocument 403 /pages/error_403.php
 ErrorDocument 404 /pages/error_404.php
 
-# Uploads-Verzeichnis vor direktem Zugriff schützen
+# PHP-Ausführung in uploads/ blockieren; Bilddateien bleiben zugänglich
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^uploads/(.*)$ - [F,L]
+    RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar)$ - [F,L]
 </IfModule>
 
-# PHP-Dateien in uploads/ sperren (ohne <Directory>)
-<FilesMatch "^uploads/.*\.php$">
+<FilesMatch "^uploads/.*\.(php[0-9]?|phtml|phar)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>

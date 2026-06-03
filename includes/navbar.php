@@ -2,15 +2,26 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $currentLang = getCurrentLang();
 $currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
+
+$_navLogoFile = getSetting('app_logo', '');
+$_navLogoSrc  = ($_navLogoFile && file_exists(UPLOAD_DIR . $_navLogoFile))
+    ? '/uploads/' . htmlspecialchars($_navLogoFile)
+    : null;
+$_navAppName  = getSetting('app_name', APP_NAME);
+// Split on last hyphen for two-tone brand rendering; fallback: show full name
+$_navDash = strrpos($_navAppName, '-');
+$_navNameA = $_navDash !== false ? substr($_navAppName, 0, $_navDash) : $_navAppName;
+$_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
 ?>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
     <div class="container">
         <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="/index.php">
-            <img src="https://image.jimcdn.com/app/cms/image/transf/dimension=115x1024:format=jpg/path/s4cea4c34b6ccc3a8/image/icfeaef9396ebbdc4/version/1568056565/image.jpg"
-                 alt="F.C.G. Die Kameruner"
-                 class="club-logo"
-                 onerror="this.style.display='none'">
-            <span><span style="color:#cf2e2e;">Kameruner</span>-Tickets</span>
+            <?php if ($_navLogoSrc): ?>
+            <img src="<?= $_navLogoSrc ?>"
+                 alt="<?= htmlspecialchars($_navAppName) ?>"
+                 class="club-logo">
+            <?php endif; ?>
+            <span><span style="color:var(--club-red);"><?= htmlspecialchars($_navNameA) ?></span><?= htmlspecialchars($_navNameB) ?></span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
             <span class="navbar-toggler-icon"></span>
@@ -86,6 +97,10 @@ $currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_auditlog.php">
                             <i class="bi bi-shield-check"></i> Audit-Log
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/pages/admin_einstellungen.php">
+                            <i class="bi bi-palette"></i> Design & Einstellungen
                         </a></li>
                     </ul>
                 </li>
