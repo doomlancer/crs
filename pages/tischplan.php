@@ -32,6 +32,23 @@ if ($eventId) {
     $selectedEvent = $stmt->fetch() ?: null;
 
     if ($selectedEvent) {
+        // event_typ laden (graceful fallback wenn Migration noch nicht gelaufen)
+        try {
+            $stmtTyp = $pdo->prepare('SELECT event_typ FROM events WHERE id = ?');
+            $stmtTyp->execute([$eventId]);
+            $selectedEvent['event_typ'] = $stmtTyp->fetchColumn() ?: 'tischplan';
+        } catch (PDOException $e) {
+            $selectedEvent['event_typ'] = 'tischplan';
+        }
+
+        // Freie-Ticket-Events bekommen eine eigene Buchungsseite
+        if ($selectedEvent['event_typ'] === 'freie_tickets') {
+            include __DIR__ . '/ticket_freiverkauf.php';
+            exit;
+        }
+    }
+
+    if ($selectedEvent) {
         // Tische + Sitzplätze in einer Query laden
         $stmt = $pdo->prepare(
             'SELECT t.id AS table_id, t.tischnummer, t.max_plaetze,

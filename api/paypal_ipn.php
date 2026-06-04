@@ -51,16 +51,16 @@ if ($response !== 'VERIFIED') {
 // Parse POST fields
 parse_str($rawBody, $ipnData);
 
-$paymentStatus  = $ipnData['payment_status']  ?? '';
-$receiverEmail  = $ipnData['receiver_email']  ?? '';
-$currency       = $ipnData['mc_currency']     ?? '';
-$buchungsnummer = trim($ipnData['custom']     ?? '');
+$paymentStatus = $ipnData['payment_status'] ?? '';
+$receiverEmail = $ipnData['receiver_email']  ?? '';
+$currency      = $ipnData['mc_currency']     ?? '';
+$custom        = trim($ipnData['custom']     ?? '');
 
 if (
     $paymentStatus !== 'Completed'
     || strtolower($receiverEmail) !== strtolower(PAYPAL_EMAIL)
     || $currency !== 'EUR'
-    || $buchungsnummer === ''
+    || $custom === ''
 ) {
     error_log('PayPal IPN: Bedingung nicht erfüllt. Status=' . $paymentStatus
         . ' receiver=' . $receiverEmail . ' currency=' . $currency);
@@ -68,9 +68,15 @@ if (
     exit;
 }
 
-try {
-    $pdo = getDB();
+// Multi-Zahlung: custom = "BATCH:bn1,bn2,bn3"; Einzel: custom = "bn"
+if (strpos($custom, 'BATCH:') === 0) {
+    $buchungsnummern = array_filter(array_map('trim', explode(',', substr($custom, 6))));
+} else {
+    $buchungsnummern = [$custom];
+}
 
+try {
+    $pdo  = getDB();
     $stmt = $pdo->prepare(
         'SELECT p.id, p.status
          FROM payments p
@@ -78,24 +84,25 @@ try {
          WHERE r.buchungsnummer = ?
          LIMIT 1'
     );
-    $stmt->execute([$buchungsnummer]);
-    $payment = $stmt->fetch();
+    $stmtUpdate = $pdo->prepare('UPDATE payments SET status = ? WHERE id = ?');
 
-    if (!$payment) {
-        error_log('PayPal IPN: Buchungsnummer nicht gefunden: ' . $buchungsnummer);
-        http_response_code(200);
-        exit;
-    }
+    foreach ($buchungsnummern as $bn) {
+        if ($bn === '') continue;
+        $stmt->execute([$bn]);
+        $payment = $stmt->fetch();
 
-    if ($payment['status'] !== 'bezahlt') {
-        $pdo->prepare('UPDATE payments SET status = ? WHERE id = ?')
-            ->execute(['bezahlt', $payment['id']]);
-
-        logAudit('PAYPAL_IPN', 'payments', (int)$payment['id'], json_encode([
-            'buchungsnummer' => $buchungsnummer,
-            'txn_id'        => $ipnData['txn_id'] ?? '',
-            'mc_gross'      => $ipnData['mc_gross'] ?? '',
-        ]));
+        if (!$payment) {
+            error_log('PayPal IPN: Buchungsnummer nicht gefunden: ' . $bn);
+            continue;
+        }
+        if ($payment['status'] !== 'bezahlt') {
+            $stmtUpdate->execute(['bezahlt', $payment['id']]);
+            logAudit('PAYPAL_IPN', 'payments', (int)$payment['id'], json_encode([
+                'buchungsnummer' => $bn,
+                'txn_id'        => $ipnData['txn_id'] ?? '',
+                'mc_gross'      => $ipnData['mc_gross'] ?? '',
+            ]));
+        }
     }
 } catch (Exception $e) {
     error_log('PayPal IPN DB-Fehler: ' . $e->getMessage());

@@ -27,6 +27,104 @@ $eventId = (int)($_POST['event_id'] ?? 0);
 $action  = $_POST['action'] ?? 'reserve';
 
 // ════════════════════════════════════════════════════════════════════
+// Freie-Ticket-Buchung (kein Sitzplan)
+// ════════════════════════════════════════════════════════════════════
+if ($action === 'reserve_free_ticket') {
+    if (!$eventId) {
+        setFlash('error', 'Kein Event ausgewählt.');
+        redirect('/pages/events.php');
+    }
+
+    $anzahl = max(1, min(10, (int)($_POST['anzahl'] ?? 1)));
+
+    try {
+        $pdo->beginTransaction();
+
+        // Event laden und prüfen
+        if (hasRole('admin')) {
+            $stmtEv = $pdo->prepare("SELECT id, name, datum, event_typ, max_gaeste, preis, status FROM events WHERE id = ? AND status != 'abgerechnet'");
+        } else {
+            $stmtEv = $pdo->prepare("SELECT id, name, datum, event_typ, max_gaeste, preis, status FROM events WHERE id = ? AND status = 'aktiv'");
+        }
+        $stmtEv->execute([$eventId]);
+        $event = $stmtEv->fetch();
+
+        if (!$event || $event['event_typ'] !== 'freie_tickets') {
+            $pdo->rollBack();
+            setFlash('error', 'Dieses Event ist nicht als Freiticket-Veranstaltung verfügbar.');
+            redirect('/pages/events.php');
+        }
+
+        // Kontingent prüfen (wenn max_gaeste gesetzt)
+        if ($event['max_gaeste'] !== null) {
+            $stmtCount = $pdo->prepare(
+                "SELECT COUNT(*) FROM reservations WHERE event_id = ? AND status != 'abgerechnet'"
+            );
+            $stmtCount->execute([$eventId]);
+            $verkauft = (int)$stmtCount->fetchColumn();
+            if ($verkauft + $anzahl > $event['max_gaeste']) {
+                $pdo->rollBack();
+                $rest = max(0, $event['max_gaeste'] - $verkauft);
+                setFlash('error', "Leider sind nur noch {$rest} Ticket(s) verfügbar.");
+                redirect('/pages/tischplan.php?event_id=' . $eventId);
+            }
+        }
+
+        $eventPreis = (float)($event['preis'] ?: TICKET_PREIS);
+
+        // Zahlungsart des Benutzers
+        $stmtUser = $pdo->prepare('SELECT zahlungsart FROM users WHERE id = ?');
+        $stmtUser->execute([$userId]);
+        $zahlungsart = $stmtUser->fetchColumn() ?: 'bar';
+
+        $stmtRes = $pdo->prepare(
+            'INSERT INTO reservations (user_id, event_id, seat_id, buchungsnummer, preis) VALUES (?,?,NULL,?,?)'
+        );
+        $stmtPay = $pdo->prepare(
+            'INSERT INTO payments (reservation_id, zahlungsart, betrag, status) VALUES (?,?,?,"offen")'
+        );
+
+        $buchungsnummern = [];
+        for ($i = 0; $i < $anzahl; $i++) {
+            $bn = generateBuchungsnummer();
+            $stmtRes->execute([$userId, $eventId, $bn, $eventPreis]);
+            $rid = (int)$pdo->lastInsertId();
+            $stmtPay->execute([$rid, $zahlungsart, $eventPreis]);
+            $buchungsnummern[] = $bn;
+            logAudit('RESERVIERUNG', 'reservations', $rid, "Freiticket: {$bn}, Event: {$eventId}");
+        }
+
+        $pdo->commit();
+
+        // Bestätigungs-E-Mail
+        $stmtUI = $pdo->prepare('SELECT email, vorname FROM users WHERE id = ?');
+        $stmtUI->execute([$userId]);
+        $userInfo = $stmtUI->fetch();
+        if ($userInfo) {
+            $buchungenFuerMail = array_map(fn($bn) => [
+                'buchungsnummer'  => $bn,
+                'preis'           => $eventPreis,
+                'tischnummer'     => null,
+                'sitzplatznummer' => null,
+            ], $buchungsnummern);
+            sendReservierungsbestaetigung(
+                $userInfo['email'], $userInfo['vorname'],
+                $buchungenFuerMail, $event['name'], $event['datum']
+            );
+        }
+
+        setFlash('success', '✓ ' . $anzahl . ' Ticket(s) erfolgreich reserviert!');
+        redirect('/pages/meine_reservierungen.php');
+
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('Freiticket-Reservierung Fehler: ' . $e->getMessage());
+        setFlash('error', 'Technischer Fehler. Bitte erneut versuchen.');
+        redirect('/pages/tischplan.php?event_id=' . $eventId);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Auto-Reservierung: Tisch + Anzahl (kein manuelles Sitzplatz-Picking)
 // ════════════════════════════════════════════════════════════════════
 if ($action === 'reserve_auto') {

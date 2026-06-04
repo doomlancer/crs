@@ -44,9 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $pdo->prepare('UPDATE reservations SET status = ? WHERE id = ?')
                     ->execute(['eingecheckt', $resId]);
 
-                // Sitzplatz auf besetzt setzen
-                $pdo->prepare('UPDATE seats SET status = ? WHERE id = ?')
-                    ->execute(['besetzt', $res['seat_id']]);
+                // Sitzplatz auf besetzt setzen (nur bei Tischplan-Events)
+                if ($res['seat_id']) {
+                    $pdo->prepare('UPDATE seats SET status = ? WHERE id = ?')
+                        ->execute(['besetzt', $res['seat_id']]);
+                }
 
                 $pdo->commit();
 
@@ -158,8 +160,8 @@ if ($selectedEventId) {
          FROM reservations r
          INNER JOIN users       u ON u.id = r.user_id
          INNER JOIN events      e ON e.id = r.event_id
-         INNER JOIN seats       s ON s.id = r.seat_id
-         INNER JOIN tables      t ON t.id = s.table_id
+         LEFT  JOIN seats       s ON s.id = r.seat_id
+         LEFT  JOIN tables      t ON t.id = s.table_id
          LEFT  JOIN payments    p ON p.reservation_id = r.id
          WHERE r.event_id = ?
          ORDER BY r.erstellt_am DESC"
@@ -393,8 +395,14 @@ include __DIR__ . '/../includes/navbar.php';
                                     <small class="text-muted"><?= htmlspecialchars($r['email']) ?></small>
                                 </td>
                                 <td class="text-nowrap">
+                                    <?php if ($r['sitzplatznummer']): ?>
                                     <i class="bi bi-grid me-1 text-muted"></i>
                                     T<?= (int)$r['tischnummer'] ?> / P<?= (int)$r['sitzplatznummer'] ?>
+                                    <?php else: ?>
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-ticket-perforated me-1"></i>Freiticket
+                                    </span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="text-nowrap">
                                     <?php if ($r['zahl_status']): ?>

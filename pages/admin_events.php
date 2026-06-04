@@ -9,6 +9,18 @@ require_once __DIR__ . '/../functions.php';
 requireRole('admin');
 
 $pdo    = getDB();
+
+// Auto-Migration: event_typ-Spalte und nullable seat_id/max_gaeste
+try {
+    $pdo->query('SELECT event_typ FROM events LIMIT 1');
+} catch (PDOException $_e) {
+    try {
+        $pdo->exec("ALTER TABLE events ADD COLUMN event_typ ENUM('tischplan','freie_tickets') NOT NULL DEFAULT 'tischplan'");
+        $pdo->exec('ALTER TABLE events MODIFY COLUMN max_gaeste INT NULL');
+        $pdo->exec('ALTER TABLE reservations MODIFY COLUMN seat_id INT NULL');
+    } catch (PDOException $_e2) { /* ignorieren, degradiert gracefully */ }
+}
+
 $action = $_GET['action'] ?? '';
 $errors = [];
 
@@ -25,33 +37,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Event erstellen ──────────────────────────────────────────────────────
     if ($postAction === 'create_event') {
-        $datum       = sanitize($_POST['datum'] ?? '');
-        $name        = sanitize($_POST['name'] ?? '');
+        $datum        = sanitize($_POST['datum'] ?? '');
+        $name         = sanitize($_POST['name'] ?? '');
         $beschreibung = trim($_POST['beschreibung'] ?? '');
-        $max_gaeste  = (int)($_POST['max_gaeste'] ?? 0);
-        $preis       = max(0.01, (float)str_replace(',', '.', $_POST['preis'] ?? '15'));
-        $status      = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
-                       ? $_POST['status'] : 'planung';
+        $event_typ    = in_array($_POST['event_typ'] ?? '', ['tischplan','freie_tickets'])
+                        ? $_POST['event_typ'] : 'tischplan';
+        $maxRaw       = trim($_POST['max_gaeste'] ?? '');
+        $max_gaeste   = $maxRaw !== '' ? max(1, (int)$maxRaw) : null;
+        $preis        = max(0.01, (float)str_replace(',', '.', $_POST['preis'] ?? '15'));
+        $status       = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
+                        ? $_POST['status'] : 'planung';
 
-        if (empty($datum))  $errors[] = 'Datum ist erforderlich.';
-        if (empty($name))   $errors[] = 'Name ist erforderlich.';
-        if ($max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
+        if (empty($datum)) $errors[] = 'Datum ist erforderlich.';
+        if (empty($name))  $errors[] = 'Name ist erforderlich.';
+        if ($event_typ === 'tischplan' && $max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
 
         if (empty($errors)) {
             try {
                 $stmt = $pdo->prepare(
-                    'INSERT INTO events (datum, name, beschreibung, max_gaeste, preis, status) VALUES (?,?,?,?,?,?)'
+                    'INSERT INTO events (datum, name, beschreibung, max_gaeste, preis, status, event_typ) VALUES (?,?,?,?,?,?,?)'
                 );
-                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status]);
+                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status, $event_typ]);
             } catch (PDOException $e) {
-                // Fallback: preis-Spalte existiert noch nicht (Migration nicht gelaufen)
+                // Fallback wenn event_typ/preis-Spalte noch fehlt
                 $stmt = $pdo->prepare(
                     'INSERT INTO events (datum, name, beschreibung, max_gaeste, status) VALUES (?,?,?,?,?)'
                 );
                 $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status]);
             }
             $newId = (int)$pdo->lastInsertId();
-            logAudit('CREATE', 'events', $newId, json_encode(compact('datum','name','status','max_gaeste','preis')));
+            logAudit('CREATE', 'events', $newId, json_encode(compact('datum','name','status','max_gaeste','preis','event_typ')));
             setFlash('success', 'Event "' . htmlspecialchars($name) . '" wurde erfolgreich erstellt.');
             redirect('/pages/admin_events.php');
         }
@@ -59,32 +74,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Event bearbeiten ─────────────────────────────────────────────────────
     if ($postAction === 'edit_event') {
-        $id          = (int)($_POST['event_id'] ?? 0);
-        $datum       = sanitize($_POST['datum'] ?? '');
-        $name        = sanitize($_POST['name'] ?? '');
+        $id           = (int)($_POST['event_id'] ?? 0);
+        $datum        = sanitize($_POST['datum'] ?? '');
+        $name         = sanitize($_POST['name'] ?? '');
         $beschreibung = trim($_POST['beschreibung'] ?? '');
-        $max_gaeste  = (int)($_POST['max_gaeste'] ?? 0);
-        $preis       = max(0.01, (float)str_replace(',', '.', $_POST['preis'] ?? '15'));
-        $status      = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
-                       ? $_POST['status'] : 'planung';
+        $event_typ    = in_array($_POST['event_typ'] ?? '', ['tischplan','freie_tickets'])
+                        ? $_POST['event_typ'] : 'tischplan';
+        $maxRaw       = trim($_POST['max_gaeste'] ?? '');
+        $max_gaeste   = $maxRaw !== '' ? max(1, (int)$maxRaw) : null;
+        $preis        = max(0.01, (float)str_replace(',', '.', $_POST['preis'] ?? '15'));
+        $status       = in_array($_POST['status'] ?? '', ['planung','aktiv','abgerechnet'])
+                        ? $_POST['status'] : 'planung';
 
-        if (empty($datum))  $errors[] = 'Datum ist erforderlich.';
-        if (empty($name))   $errors[] = 'Name ist erforderlich.';
-        if ($max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
+        if (empty($datum)) $errors[] = 'Datum ist erforderlich.';
+        if (empty($name))  $errors[] = 'Name ist erforderlich.';
+        if ($event_typ === 'tischplan' && $max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
 
         if (empty($errors) && $id > 0) {
             try {
                 $stmt = $pdo->prepare(
-                    'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, preis=?, status=? WHERE id=?'
+                    'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, preis=?, status=?, event_typ=? WHERE id=?'
                 );
-                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status, $id]);
+                $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $preis, $status, $event_typ, $id]);
             } catch (PDOException $e) {
                 $stmt = $pdo->prepare(
                     'UPDATE events SET datum=?, name=?, beschreibung=?, max_gaeste=?, status=? WHERE id=?'
                 );
                 $stmt->execute([$datum, $name, $beschreibung, $max_gaeste, $status, $id]);
             }
-            logAudit('UPDATE', 'events', $id, json_encode(compact('datum','name','status','max_gaeste','preis')));
+            logAudit('UPDATE', 'events', $id, json_encode(compact('datum','name','status','max_gaeste','preis','event_typ')));
             setFlash('success', 'Event wurde erfolgreich aktualisiert.');
             redirect('/pages/admin_events.php');
         }
@@ -498,6 +516,21 @@ include __DIR__ . '/../includes/navbar.php';
                 <?= csrfField() ?>
                 <input type="hidden" name="post_action" value="edit_event">
                 <input type="hidden" name="event_id" value="<?= $editEvent['id'] ?>">
+                <div class="col-12">
+                    <label class="form-label fw-semibold small">Event-Typ</label>
+                    <div class="d-flex gap-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="event_typ"
+                                   value="tischplan" <?= ($editEvent['event_typ'] ?? 'tischplan') === 'tischplan' ? 'checked' : '' ?>>
+                            <label class="form-check-label"><i class="bi bi-grid-3x3 me-1"></i>Tischplan</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="event_typ"
+                                   value="freie_tickets" <?= ($editEvent['event_typ'] ?? '') === 'freie_tickets' ? 'checked' : '' ?>>
+                            <label class="form-check-label"><i class="bi bi-ticket-perforated me-1"></i>Freie Tickets</label>
+                        </div>
+                    </div>
+                </div>
                 <div class="col-md-3">
                     <label class="form-label fw-semibold small">Datum <span class="text-danger">*</span></label>
                     <input type="date" name="datum" class="form-control"
@@ -509,9 +542,10 @@ include __DIR__ . '/../includes/navbar.php';
                            value="<?= htmlspecialchars($editEvent['name']) ?>" required>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small">Max. Gäste <span class="text-danger">*</span></label>
+                    <label class="form-label fw-semibold small">Max. Gäste / Tickets</label>
                     <input type="number" name="max_gaeste" class="form-control" min="1"
-                           value="<?= (int)$editEvent['max_gaeste'] ?>" required>
+                           value="<?= $editEvent['max_gaeste'] !== null ? (int)$editEvent['max_gaeste'] : '' ?>"
+                           placeholder="leer = unbegrenzt">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small">Ticketpreis (€) <span class="text-danger">*</span></label>
@@ -600,6 +634,11 @@ include __DIR__ . '/../includes/navbar.php';
                             <small class="text-muted d-block text-truncate" style="max-width:250px;">
                                 <?= htmlspecialchars($ev['beschreibung']) ?>
                             </small>
+                            <?php endif; ?>
+                            <?php if (($ev['event_typ'] ?? 'tischplan') === 'freie_tickets'): ?>
+                            <span class="badge bg-info text-dark mt-1">
+                                <i class="bi bi-ticket-perforated me-1"></i>Freie Tickets
+                            </span>
                             <?php endif; ?>
                         </td>
                         <td><?= (int)$ev['max_gaeste'] ?></td>
@@ -752,6 +791,27 @@ include __DIR__ . '/../includes/navbar.php';
                 <input type="hidden" name="post_action" value="create_event">
                 <div class="modal-body">
                     <div class="row g-3">
+                        <!-- Event-Typ -->
+                        <div class="col-12">
+                            <label class="form-label fw-semibold small">Event-Typ</label>
+                            <div class="d-flex gap-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="event_typ"
+                                           id="ce_typ_tischplan" value="tischplan" checked>
+                                    <label class="form-check-label" for="ce_typ_tischplan">
+                                        <i class="bi bi-grid-3x3 me-1"></i>Tischplan
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="event_typ"
+                                           id="ce_typ_freiticket" value="freie_tickets">
+                                    <label class="form-check-label" for="ce_typ_freiticket">
+                                        <i class="bi bi-ticket-perforated me-1"></i>Freie Tickets
+                                        <small class="text-muted">(kein Sitzplan, offene Veranstaltung)</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold small">Datum <span class="text-danger">*</span></label>
                             <input type="date" name="datum" class="form-control"
@@ -762,9 +822,9 @@ include __DIR__ . '/../includes/navbar.php';
                             <input type="text" name="name" class="form-control" maxlength="255"
                                    placeholder="z.B. Karneval 2026" required>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold small">Max. Gäste <span class="text-danger">*</span></label>
-                            <input type="number" name="max_gaeste" class="form-control" min="1" value="200" required>
+                        <div class="col-md-3" id="ce_max_gaeste_wrap">
+                            <label class="form-label fw-semibold small" id="ce_max_label">Max. Gäste <span class="text-danger" id="ce_max_req">*</span></label>
+                            <input type="number" name="max_gaeste" class="form-control" min="1" value="200" id="ce_max_input">
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold small">Ticketpreis (€) <span class="text-danger">*</span></label>
@@ -870,6 +930,32 @@ document.addEventListener("DOMContentLoaded", function() {
     const modal = new bootstrap.Modal(document.getElementById("createEventModal"));
     modal.show();
 });' : '') . '
+
+// Event-Typ Toggle im Erstellungsformular
+document.addEventListener("DOMContentLoaded", function() {
+    var radios = document.querySelectorAll("[name=\"event_typ\"][form!=\"\"]");
+    // Nur die Radios im Modal ansprechen
+    var modalRadios = document.querySelectorAll("#createEventModal [name=\"event_typ\"]");
+    var maxWrap = document.getElementById("ce_max_gaeste_wrap");
+    var maxLabel = document.getElementById("ce_max_label");
+    var maxReq  = document.getElementById("ce_max_req");
+    var maxInput = document.getElementById("ce_max_input");
+
+    function updateMaxField() {
+        var isFrei = document.querySelector("#createEventModal [name=\"event_typ\"]:checked")?.value === "freie_tickets";
+        if (maxLabel) maxLabel.childNodes[0].textContent = isFrei ? "Max. Tickets " : "Max. Gäste ";
+        if (maxReq)   maxReq.style.display = isFrei ? "none" : "";
+        if (maxInput) {
+            maxInput.required = !isFrei;
+            maxInput.placeholder = isFrei ? "leer = unbegrenzt" : "";
+            if (isFrei && maxInput.value === "200") maxInput.value = "";
+            if (!isFrei && maxInput.value === "") maxInput.value = "200";
+        }
+    }
+
+    modalRadios.forEach(function(r) { r.addEventListener("change", updateMaxField); });
+    updateMaxField();
+});
 </script>';
 
 include __DIR__ . '/../includes/footer.php';
