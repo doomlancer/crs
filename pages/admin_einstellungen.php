@@ -11,31 +11,33 @@ $pdo = getDB();
 
 $errors = [];
 
-// ─── Migration-Check: settings-Tabelle muss existieren ────────────────────────
+// ─── Auto-Migration: settings-Tabelle bei Bedarf erstellen ───────────────────
 if (!settingsTableExists()) {
-    $pageTitle = 'Design & Einstellungen';
-    include __DIR__ . '/../includes/header.php';
-    include __DIR__ . '/../includes/navbar.php';
-    ?>
-    <main class="container py-5">
-        <div class="alert alert-warning shadow-sm">
-            <h2 class="h5 fw-bold">
-                <i class="bi bi-exclamation-triangle me-2"></i>Migration erforderlich
-            </h2>
-            <p class="mb-2">
-                Die Tabelle <code>settings</code> existiert noch nicht. Bitte führen Sie die
-                ausstehende Migration <code>005_settings.sql</code> aus, bevor Sie diese Seite nutzen.
-            </p>
-            <ol class="mb-0">
-                <li><code>migrate_web.php</code> per FTP hochladen (falls nicht vorhanden).</li>
-                <li>Als Admin im Browser <code>/migrate_web.php</code> aufrufen und ausführen.</li>
-                <li><code>migrate_web.php</code> anschließend wieder löschen.</li>
-            </ol>
-        </div>
-    </main>
-    <?php
-    include __DIR__ . '/../includes/footer.php';
-    exit;
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `settings` (
+              `id` INT NOT NULL AUTO_INCREMENT,
+              `setting_key`   VARCHAR(100) NOT NULL,
+              `setting_value` TEXT DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uq_key` (`setting_key`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+        $pdo->exec("
+            INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
+              ('color_primary','#cf2e2e'),('color_primary_dark','#a82424'),
+              ('color_primary_light','#e84444'),('color_dark','#1a1a1a'),
+              ('color_dark2','#2d2d2d'),('color_bg','#f5f5f5'),
+              ('app_name','Kameruner-Tickets'),('app_slogan',''),
+              ('app_logo',''),('app_favicon',''),
+              ('font_family','inter'),('theme_version','1')
+            ON DUPLICATE KEY UPDATE setting_key = setting_key
+        ");
+        redirect('/pages/admin_einstellungen.php');
+    } catch (PDOException $e) {
+        setFlash('error', 'Tabelle konnte nicht erstellt werden: ' . $e->getMessage());
+        redirect('/pages/admin_dashboard.php');
+    }
 }
 
 // ─── POST-Handler ─────────────────────────────────────────────────────────────
