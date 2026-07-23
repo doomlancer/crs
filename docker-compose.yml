@@ -1,0 +1,60 @@
+services:
+  app:
+    build: .
+    image: kameruner-tickets:latest
+    container_name: kameruner-tickets
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      # Host-Port : Container-Port. Auf Unraid z.B. 8080 wählen und dann
+      # den Reverse-Proxy oder den Browser auf http://SERVER-IP:8080 zeigen.
+      - "${APP_PORT:-8080}:80"
+    environment:
+      # ── Datenbank (zeigt auf den db-Service unten) ──
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-crs}
+      DB_USER: ${DB_USER:-crs}
+      DB_PASS: ${DB_PASS:-changeme}
+      # ── Anwendung ──
+      APP_NAME: ${APP_NAME:-Kameruner-Tickets}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      TICKET_PREIS: ${TICKET_PREIS:-15.00}
+      DEBUG_MODE: ${DEBUG_MODE:-false}
+      # FORCE_HTTPS=false für lokalen HTTP-Zugriff; true hinter Reverse-Proxy/TLS
+      FORCE_HTTPS: ${FORCE_HTTPS:-false}
+      # ── Erst-Admin (nur beim ersten Start verwendet) ──
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_VORNAME: ${ADMIN_VORNAME:-Admin}
+      ADMIN_NACHNAME: ${ADMIN_NACHNAME:-Kameruner}
+      # ── PayPal (optional) ──
+      PAYPAL_EMAIL: ${PAYPAL_EMAIL:-}
+      PAYPAL_SANDBOX: ${PAYPAL_SANDBOX:-false}
+      # ── SMTP / E-Mail (optional – leer lassen = kein Mailversand) ──
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-on}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Kameruner-Tickets}
+    volumes:
+      - app_uploads:/var/www/html/uploads
+      - app_logs:/var/www/html/logs
+
+  db:
+    image: mariadb:10.11
+    container_name: kameruner-tickets-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-crs}
+      MARIADB_USER: ${DB_USER:-crs}
+      MARIADB_PASSWORD: ${DB_PASS:-changeme}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS:-changeme-root}
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  app_uploads:
+  app_logs:
+  db_data:

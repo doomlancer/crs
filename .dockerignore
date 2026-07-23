@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+*.md
+logs/*
+uploads/*
+!uploads/.gitkeep
+.idea
+.vscode
+*.swp
+migrate_web.php

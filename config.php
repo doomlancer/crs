@@ -80,13 +80,27 @@ function getDB(): PDO {
     return $pdo;
 }
 
-if (!DEBUG_MODE && (!isset($_SERVER['HTTPS']) || $_SERVER['HTTPS'] !== 'on')) {
+// Effektives Protokoll ermitteln – erkennt auch TLS-Terminierung durch einen
+// Reverse-Proxy (SWAG / Nginx Proxy Manager / Cloudflare / Traefik).
+$isHttps = (
+       (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
+    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+    || (($_SERVER['HTTP_X_FORWARDED_SSL']   ?? '') === 'on')
+    || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+);
+
+// FORCE_HTTPS=false erlaubt reinen HTTP-Betrieb (lokaler Direktzugriff ohne Proxy).
+$forceHttps = filter_var($_ENV['FORCE_HTTPS'] ?? 'true', FILTER_VALIDATE_BOOLEAN);
+
+if (!DEBUG_MODE && $forceHttps && !$isHttps) {
     header('Location: https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'], true, 301);
     exit;
 }
 
 ini_set('session.cookie_httponly', 1);
-ini_set('session.cookie_secure', DEBUG_MODE ? 0 : 1);
+// Secure-Cookie nur wenn die Verbindung tatsächlich HTTPS ist – sonst käme
+// über reines HTTP kein Session-Cookie an und der Login würde scheitern.
+ini_set('session.cookie_secure', $isHttps ? 1 : 0);
 ini_set('session.use_strict_mode', 1);
 ini_set('session.cookie_samesite', 'Strict');
 ini_set('session.gc_maxlifetime', SESSION_TIMEOUT);
