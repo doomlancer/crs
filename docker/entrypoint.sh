@@ -33,16 +33,26 @@ else
 fi
 
 # ── 2) Auf die Datenbank warten ────────────────────────────────────────────
-DB_HOST="${DB_HOST:-db}"
-DB_USER="${DB_USER:-root}"
-DB_PASS="${DB_PASS:-}"
-echo "→ Warte auf Datenbank (${DB_HOST}) ..."
+# Prüfung über PHP/PDO – exakt die Verbindung, die die App braucht (inkl.
+# Zugangsdaten und Datenbankname). Unabhängig von mysqladmin.
+echo "→ Warte auf Datenbank (${DB_HOST:-db}) ..."
 tries=0
-until mysqladmin ping -h"${DB_HOST}" -u"${DB_USER}" -p"${DB_PASS}" --silent 2>/dev/null; do
+until php -r '
+    $h = getenv("DB_HOST") ?: "db";
+    $n = getenv("DB_NAME") ?: "crs";
+    $u = getenv("DB_USER") ?: "root";
+    $p = getenv("DB_PASS") ?: "";
+    try { new PDO("mysql:host=$h;dbname=$n;charset=utf8mb4", $u, $p, [PDO::ATTR_TIMEOUT => 3]); exit(0); }
+    catch (Throwable $e) { fwrite(STDERR, $e->getMessage()."\n"); exit(1); }
+' 2>/tmp/dbwait.err; do
     tries=$((tries+1))
-    if [ "$tries" -ge 60 ]; then
-        echo "✗ Datenbank nach 60 Versuchen nicht erreichbar – breche ab."
+    if [ "$tries" -ge 90 ]; then
+        echo "✗ Datenbank nach 90 Versuchen nicht erreichbar – breche ab."
+        echo "  Letzter Fehler: $(cat /tmp/dbwait.err 2>/dev/null)"
         exit 1
+    fi
+    if [ $((tries % 5)) -eq 0 ]; then
+        echo "  … noch nicht bereit (Versuch ${tries}): $(cat /tmp/dbwait.err 2>/dev/null)"
     fi
     sleep 2
 done
