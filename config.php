@@ -19,6 +19,20 @@ if (file_exists($envFile)) {
     }
 }
 
+// Container-/System-Umgebungsvariablen übernehmen (Docker reicht Werte per
+// environment: durch). getenv() funktioniert unabhängig von variables_order.
+foreach ([
+    'DB_HOST','DB_NAME','DB_USER','DB_PASS','DEBUG_MODE','APP_NAME','APP_URL',
+    'TICKET_PREIS','FORCE_HTTPS','PAYPAL_EMAIL','PAYPAL_SANDBOX',
+    'SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_FROM_NAME',
+] as $__k) {
+    $__v = getenv($__k);
+    if ($__v !== false && !isset($_ENV[$__k])) {
+        $_ENV[$__k] = $__v;
+    }
+}
+unset($__k, $__v);
+
 // Fallbacks
 $_ENV['DB_HOST']         ??= 'localhost';
 $_ENV['DB_NAME']         ??= 'crs';

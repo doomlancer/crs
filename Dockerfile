@@ -23,8 +23,12 @@ RUN sed -ri 's!<Directory /var/www/>!<Directory /var/www/html/>!g' /etc/apache2/
     && a2enconf app-override
 
 # --- PHP-Produktionseinstellungen + msmtp als sendmail_path ----------------
+# variables_order = EGPCS: sorgt dafür, dass Container-Umgebungsvariablen in
+# $_ENV landen (config.php liest daraus). Ohne "E" wäre $_ENV leer und die App
+# würde auf die localhost-Fallbacks zurückfallen.
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
     && { \
+        echo 'variables_order = "EGPCS"'; \
         echo 'upload_max_filesize = 8M'; \
         echo 'post_max_size = 12M'; \
         echo 'expose_php = Off'; \
