@@ -1,0 +1,18 @@
+# Reserve-Weg: Image lokal aus dem Quellcode bauen statt aus der Registry laden.
+#
+# Nutzen, wenn die Registry nicht erreichbar ist oder du eine Änderung testen
+# willst, die noch nicht gepusht wurde:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# (Das erledigt auch ./auto_update.sh automatisch.)
+#
+# Der Quellcode muss dafür auf dem Server liegen. Im Normalbetrieb wird diese
+# Datei nicht gebraucht – dann kommt das fertige Image aus ghcr.io.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kameruner-tickets:local

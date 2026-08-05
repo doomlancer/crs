@@ -10,8 +10,15 @@ Admin-Benutzer wird automatisch angelegt.
 
 ```bash
 cp .env.example .env
-nano .env            # Passwörter, APP_URL, Admin-Zugang eintragen
-docker compose up -d --build
+nano .env            # Passwörter, APP_URL, Admin-Zugang, GHCR_TOKEN eintragen
+docker compose up -d
+```
+
+Das App-Image kommt fertig aus der GitHub-Registry — es muss nicht gebaut werden.
+Dafür ist einmalig ein Zugangstoken nötig, siehe **Updaten → Einmalige
+Einrichtung**. Wer lieber selbst baut, nutzt:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 Danach im Browser: **http://SERVER-IP:8080** → mit dem in `.env` gesetzten
@@ -37,8 +44,10 @@ Container zusammen verwaltet.
    - `FORCE_HTTPS` – siehe unten
 5. **Compose Up**. Beim ersten Start baut Unraid das Image und startet beide Container.
 
-Der Code muss dafür auf dem Server liegen (z. B. per `git clone` in einen
-Share wie `/mnt/user/appdata/kameruner-tickets`), da das Image lokal gebaut wird.
+Das App-Image wird aus der GitHub-Registry geladen — der Quellcode muss dafür
+**nicht** auf dem Server liegen. Wer trotzdem lokal bauen möchte (Reserve-Weg,
+siehe `docker-compose.build.yml`), klont das Repository z. B. nach
+`/mnt/user/appdata/kameruner-tickets`.
 
 ### Weg B – Zwei einzelne Container (ohne Compose)
 
@@ -103,15 +112,105 @@ Drei Volumes sichern alles Wichtige über Neustarts/Updates hinweg:
 
 ---
 
-## Updaten
+## Updaten – läuft automatisch
 
-```bash
-git pull
-docker compose up -d --build
+Der Normalfall braucht **keinen einzigen Befehl auf dem Server**:
+
+```
+Änderung wird nach GitHub gepusht
+        ↓
+GitHub Actions baut das Image        (.github/workflows/docker-publish.yml)
+        ↓
+Image liegt in ghcr.io/doomlancer/crs:latest
+        ↓
+Watchtower auf dem Server holt es    (Standard: alle 5 Minuten)
+        ↓
+Container startet neu, Migrationen laufen automatisch
+        ↓
+Änderung ist live
 ```
 
-Neue Migrationen laufen beim Start automatisch; bereits eingespielte werden
+Neue Migrationen laufen bei jedem Start automatisch; bereits eingespielte werden
 übersprungen (Tracking-Tabelle `migrations`).
+
+### Einmalige Einrichtung
+
+Weil das Image **privat** ist, braucht der Server einmalig Zugangsdaten.
+
+**1. GitHub-Token anlegen**
+GitHub → *Settings* → *Developer settings* → *Personal access tokens (classic)* →
+*Generate new token*. Als Berechtigung genügt **`read:packages`**.
+Den Token in die `.env` eintragen:
+```ini
+GHCR_USER=doomlancer
+GHCR_TOKEN=ghp_dein_token
+```
+
+**2. Einmalig auf dem Server anmelden**
+```bash
+echo "ghp_dein_token" | docker login ghcr.io -u doomlancer --password-stdin
+```
+
+**3. Paket auf privat stellen**
+Das Repository ist öffentlich, daher wird das Image beim ersten Push ebenfalls
+öffentlich veröffentlicht. Nach dem ersten erfolgreichen Workflow-Lauf hier
+umstellen:
+`github.com/users/doomlancer/packages/container/crs/settings` → *Change visibility*
+→ **Private**.
+
+**4. Stack einmal neu starten**, damit Watchtower dazukommt:
+```bash
+cd /mnt/user/appdata/kameruner-tickets/crs
+git pull
+docker compose up -d
+```
+
+Ab jetzt läuft alles von selbst.
+
+### Kontrollieren
+
+```bash
+docker logs -f kameruner-tickets-watchtower    # sieht Watchtower neue Versionen?
+docker compose ps                              # laufen alle drei Container?
+```
+
+### Sofort aktualisieren (ohne auf Watchtower zu warten)
+
+```bash
+./update.sh            # neuestes Image holen und starten
+./update.sh --local    # stattdessen lokal aus dem Quellcode bauen
+```
+
+### An Veranstaltungstagen
+
+Ein Update startet den Container neu — das würde den Einlass kurz unterbrechen.
+Zwei Möglichkeiten:
+
+```bash
+docker stop kameruner-tickets-watchtower       # Updates pausieren
+docker start kameruner-tickets-watchtower      # danach wieder aktivieren
+```
+
+Oder dauerhaft auf nächtliche Updates umstellen (in `.env`):
+```ini
+WATCHTOWER_SCHEDULE=0 0 4 * * *    # täglich 4 Uhr statt alle 5 Minuten
+```
+
+### Auf eine ältere Version zurück
+
+Jeder Build wird zusätzlich mit dem Commit-Kürzel getaggt. Zum Zurückrollen in
+der `.env` das Image festnageln und neu starten:
+```ini
+APP_IMAGE=ghcr.io/doomlancer/crs:sha-abc1234
+```
+```bash
+docker compose up -d
+```
+Die verfügbaren Tags stehen auf GitHub unter *Packages*.
+
+> **Hinweis:** Watchtower aktualisiert ausschließlich den App-Container – er
+> trägt dafür das Label `com.centurylinklabs.watchtower.enable`. Die Datenbank
+> und alle übrigen Container auf deinem Unraid werden nicht angefasst.
 
 ---
 

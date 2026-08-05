@@ -1,6 +1,12 @@
 #!/bin/bash
-# Kameruner-Tickets – Update-Helfer
-# Holt die neuesten Änderungen, baut das Image neu, startet neu und räumt auf.
+# Kameruner-Tickets – manuelles Update.
+#
+# Im Normalbetrieb wird dieses Skript NICHT gebraucht: GitHub Actions baut das
+# Image bei jedem Push, Watchtower holt es sich automatisch. Das hier ist der
+# Weg, wenn du nicht auf den nächsten Watchtower-Durchlauf warten willst.
+#
+#   ./update.sh           neuestes Image aus der Registry holen (schnell)
+#   ./update.sh --local   stattdessen lokal aus dem Quellcode bauen
 set -e
 
 cd "$(dirname "$0")"
@@ -9,11 +15,19 @@ echo "────────────────────────�
 echo " Kameruner-Tickets – Update"
 echo "──────────────────────────────────────────────"
 
-echo "→ Hole neueste Änderungen (git pull) ..."
-git pull
+if [ "${1:-}" = "--local" ]; then
+    echo "→ Hole neuesten Quellcode (git pull) ..."
+    git pull --ff-only
 
-echo "→ Baue Image und starte Container neu ..."
-docker compose up -d --build
+    echo "→ Baue Image lokal und starte neu ..."
+    docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+else
+    echo "→ Hole neuestes Image aus der Registry ..."
+    docker compose pull app
+
+    echo "→ Starte Container mit der neuen Version ..."
+    docker compose up -d
+fi
 
 echo "→ Räume alte, ungenutzte Images auf ..."
 docker image prune -f >/dev/null 2>&1 || true

@@ -1,7 +1,16 @@
 #!/bin/bash
-# Kameruner-Tickets – Auto-Update für den Zeitplan (Unraid User Scripts).
-# Läuft z. B. alle 5 Minuten und baut den Container NUR neu, wenn es
-# tatsächlich neue Commits auf dem Branch gibt. Sonst passiert nichts.
+# Kameruner-Tickets – Notfallpfad: Update direkt aus dem Git-Quellcode.
+#
+# WIRD IM NORMALBETRIEB NICHT BENÖTIGT.
+# Standardmäßig baut GitHub Actions das Image und Watchtower zieht es
+# automatisch – ganz ohne Zutun auf dem Server.
+#
+# Dieses Skript ist die Rückfallebene, falls die Registry einmal nicht
+# erreichbar ist. Es prüft, ob es neue Commits gibt, und baut das Image dann
+# lokal aus dem Quellcode. Ohne Änderungen passiert nichts.
+#
+# Für einen Zeitplan (Unraid „User Scripts"), z. B. alle 5 Minuten:
+#   */5 * * * *
 set -e
 
 cd "$(dirname "$0")"
@@ -24,8 +33,8 @@ fi
 echo "$(ts) Neue Commits gefunden ($LOCAL → $REMOTE) – aktualisiere ..."
 git pull --ff-only origin "$BRANCH"
 
-echo "$(ts) Baue Image und starte Container neu ..."
-docker compose up -d --build
+echo "$(ts) Baue Image lokal und starte Container neu ..."
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 echo "$(ts) Räume alte Images auf ..."
 docker image prune -f >/dev/null 2>&1 || true

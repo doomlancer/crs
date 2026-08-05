@@ -1,9 +1,15 @@
 services:
   app:
-    build: .
-    image: kameruner-tickets:latest
+    # Fertiges Image aus der GitHub-Registry. Es wird bei jedem Push auf main
+    # automatisch von GitHub Actions gebaut (.github/workflows/docker-publish.yml).
+    # Lokal selbst bauen? -> docker-compose.build.yml zusätzlich laden, siehe README.
+    image: ${APP_IMAGE:-ghcr.io/doomlancer/crs:latest}
     container_name: kameruner-tickets
     restart: unless-stopped
+    labels:
+      # Nur Container mit diesem Label werden von Watchtower aktualisiert.
+      # Dadurch bleiben MariaDB und alle übrigen Unraid-Container unangetastet.
+      com.centurylinklabs.watchtower.enable: "true"
     depends_on:
       db:
         condition: service_healthy
@@ -63,6 +69,36 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+
+  # ── Automatische Updates ────────────────────────────────────────────────
+  # Prüft regelmäßig, ob in der Registry ein neueres App-Image liegt, und
+  # startet den Container dann mit der neuen Version neu. Dadurch landet jede
+  # Änderung ohne Eingriff auf dem Server im laufenden Betrieb.
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: kameruner-tickets-watchtower
+    restart: unless-stopped
+    volumes:
+      # Zugriff auf die Docker-Steuerung, um Container zu erneuern
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # NUR beschriftete Container anfassen (siehe Label beim app-Service).
+      # Ohne diesen Schalter würde Watchtower ALLE Container auf dem Unraid
+      # aktualisieren – auch fremde Dienste und die Datenbank.
+      WATCHTOWER_LABEL_ENABLE: "true"
+      # Alte, ersetzte Images aufräumen, damit der Speicher nicht volläuft
+      WATCHTOWER_CLEANUP: "true"
+      # Beim Neustart abhängige Container korrekt behandeln
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      # Prüfintervall in Sekunden (Standard: alle 5 Minuten).
+      # Alternativ nächtlich statt im Takt: WATCHTOWER_SCHEDULE setzen und
+      # WATCHTOWER_POLL_INTERVAL leer lassen – siehe README-Docker.md.
+      WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_INTERVAL:-300}
+      WATCHTOWER_SCHEDULE: ${WATCHTOWER_SCHEDULE:-}
+      # Zugangsdaten für die private Registry
+      REPO_USER: ${GHCR_USER:-}
+      REPO_PASS: ${GHCR_TOKEN:-}
+      TZ: ${TZ:-Europe/Berlin}
 
 volumes:
   app_uploads:

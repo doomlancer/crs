@@ -1,0 +1,78 @@
+name: Docker-Image bauen und veröffentlichen
+
+# Bei jedem Push auf main wird das Image gebaut und in die GitHub-Registry
+# (ghcr.io) gelegt. Watchtower auf dem Unraid-Server holt es sich von dort
+# selbstständig ab – dadurch landet jede Änderung ohne Zutun im Container.
+on:
+  push:
+    branches: [main]
+    # Änderungen, die das Image nicht beeinflussen, lösen keinen Build aus
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'update.sh'
+      - 'auto_update.sh'
+  workflow_dispatch:        # erlaubt manuelles Auslösen über die GitHub-Oberfläche
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # doomlancer/crs
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # nötig, um in die Registry zu schreiben
+
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v4
+
+      - name: Docker Buildx einrichten
+        uses: docker/setup-buildx-action@v3
+
+      - name: An der GitHub-Registry anmelden
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # Eingebautes Token – es muss kein Secret angelegt werden
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags und Metadaten bestimmen
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=Kameruner-Tickets
+            org.opencontainers.image.description=Karneval-Reservierungssystem
+
+      - name: Image bauen und hochladen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64        # Unraid läuft auf amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer-Cache: die teure apt-/PHP-Extension-Schicht wird
+          # wiederverwendet, Folge-Builds dauern dadurch nur noch ~1 Minute
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Ergebnis zusammenfassen
+        run: |
+          {
+            echo "### Image veröffentlicht"
+            echo ""
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "Watchtower auf dem Unraid-Server übernimmt es beim nächsten Durchlauf automatisch."
+          } >> "$GITHUB_STEP_SUMMARY"
