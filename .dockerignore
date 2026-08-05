@@ -5,6 +5,7 @@
 logs/*
 uploads/*
 !uploads/.gitkeep
+!uploads/.htaccess
 .idea
 .vscode
 *.swp

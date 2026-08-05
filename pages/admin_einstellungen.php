@@ -30,7 +30,7 @@ if (!settingsTableExists()) {
               ('color_dark2','#2d2d2d'),('color_bg','#f5f5f5'),
               ('app_name','Kameruner-Tickets'),('app_slogan',''),
               ('app_logo',''),('app_favicon',''),
-              ('font_family','inter'),('theme_version','1')
+              ('font_family','system'),('theme_version','1')
             ON DUPLICATE KEY UPDATE setting_key = setting_key
         ");
         redirect('/pages/admin_einstellungen.php');
@@ -63,8 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $allowedFonts = ['inter', 'lato', 'poppins', 'roboto', 'oswald'];
-        $fontVal = trim($_POST['font_family'] ?? 'inter');
+        $allowedFonts = ['system', 'humanist', 'geometric', 'classic', 'condensed', 'mono'];
+        $fontVal = trim($_POST['font_family'] ?? 'system');
         if (!in_array($fontVal, $allowedFonts, true)) {
             $errors[] = 'Ungültige Schriftart.';
         }
@@ -87,40 +87,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Logo hochladen ─────────────────────────────────────────────────────────
     if ($postAction === 'upload_logo') {
-        $allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
-        $file    = $_FILES['logo_file'] ?? null;
-        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            $errors[] = 'Bitte wählen Sie eine Bilddatei aus.';
-        } elseif (!in_array($file['type'], $allowed, true)) {
-            $errors[] = 'Erlaubte Formate: PNG, JPG, GIF, WebP, SVG.';
-        } elseif ($file['size'] > 2 * 1024 * 1024) {
-            $errors[] = 'Datei zu groß (max. 2 MB).';
-        } else {
-            $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            $name = 'logo_' . time() . '.' . $ext;
-            if (move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $name)) {
-                $old = getSetting('app_logo', '');
-                if ($old && $old !== $name && file_exists(UPLOAD_DIR . $old)) {
-                    @unlink(UPLOAD_DIR . $old);
-                }
-                setSetting('app_logo', $name);
-                setSetting('theme_version', (string)((int)getSetting('theme_version', '1') + 1));
-                logAudit('UPDATE', 'settings', null, 'Logo hochgeladen: ' . $name);
-                setFlash('success', 'Logo gespeichert.');
-            } else {
-                $errors[] = 'Datei konnte nicht gespeichert werden (Berechtigungen prüfen).';
+        $res = saveUploadedImage($_FILES['logo_file'] ?? [], 'logo', 2 * 1024 * 1024);
+        if ($res['ok']) {
+            $old = getSetting('app_logo', '');
+            if ($old && $old !== $res['name']) {
+                deleteUploadedFile($old);
             }
-        }
-        if (!empty($errors)) {
-            setFlash('error', implode(' ', $errors));
+            setSetting('app_logo', $res['name']);
+            setSetting('theme_version', (string)((int)getSetting('theme_version', '1') + 1));
+            logAudit('UPDATE', 'settings', null, 'Logo hochgeladen: ' . $res['name']);
+            setFlash('success', 'Logo gespeichert.');
+        } else {
+            setFlash('error', $res['error']);
         }
         redirect('/pages/admin_einstellungen.php');
     }
 
     // ── Logo entfernen ─────────────────────────────────────────────────────────
     if ($postAction === 'remove_logo') {
-        $old = getSetting('app_logo', '');
-        if ($old && file_exists(UPLOAD_DIR . $old)) @unlink(UPLOAD_DIR . $old);
+        deleteUploadedFile(getSetting('app_logo', ''));
         setSetting('app_logo', '');
         setSetting('theme_version', (string)((int)getSetting('theme_version', '1') + 1));
         logAudit('UPDATE', 'settings', null, 'Logo entfernt');
@@ -130,40 +115,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── Favicon hochladen ──────────────────────────────────────────────────────
     if ($postAction === 'upload_favicon') {
-        $allowed = ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/webp'];
-        $file    = $_FILES['favicon_file'] ?? null;
-        if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            $errors[] = 'Bitte wählen Sie eine Bilddatei aus.';
-        } elseif (!in_array($file['type'], $allowed, true)) {
-            $errors[] = 'Erlaubte Formate: PNG, ICO, WebP.';
-        } elseif ($file['size'] > 512 * 1024) {
-            $errors[] = 'Datei zu groß (max. 512 KB).';
-        } else {
-            $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            $name = 'favicon_' . time() . '.' . $ext;
-            if (move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $name)) {
-                $old = getSetting('app_favicon', '');
-                if ($old && $old !== $name && file_exists(UPLOAD_DIR . $old)) {
-                    @unlink(UPLOAD_DIR . $old);
-                }
-                setSetting('app_favicon', $name);
-                setSetting('theme_version', (string)((int)getSetting('theme_version', '1') + 1));
-                logAudit('UPDATE', 'settings', null, 'Favicon hochgeladen: ' . $name);
-                setFlash('success', 'Favicon gespeichert.');
-            } else {
-                $errors[] = 'Datei konnte nicht gespeichert werden.';
+        $res = saveUploadedImage(
+            $_FILES['favicon_file'] ?? [],
+            'favicon',
+            512 * 1024,
+            [IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP, IMAGETYPE_ICO]
+        );
+        if ($res['ok']) {
+            $old = getSetting('app_favicon', '');
+            if ($old && $old !== $res['name']) {
+                deleteUploadedFile($old);
             }
-        }
-        if (!empty($errors)) {
-            setFlash('error', implode(' ', $errors));
+            setSetting('app_favicon', $res['name']);
+            setSetting('theme_version', (string)((int)getSetting('theme_version', '1') + 1));
+            logAudit('UPDATE', 'settings', null, 'Favicon hochgeladen: ' . $res['name']);
+            setFlash('success', 'Favicon gespeichert.');
+        } else {
+            setFlash('error', $res['error']);
         }
         redirect('/pages/admin_einstellungen.php');
     }
 
     // ── Favicon entfernen ──────────────────────────────────────────────────────
     if ($postAction === 'remove_favicon') {
-        $old = getSetting('app_favicon', '');
-        if ($old && file_exists(UPLOAD_DIR . $old)) @unlink(UPLOAD_DIR . $old);
+        deleteUploadedFile(getSetting('app_favicon', ''));
         setSetting('app_favicon', '');
         setSetting('theme_version', (string)((int)getSetting('theme_version', '1') + 1));
         logAudit('UPDATE', 'settings', null, 'Favicon entfernt');
@@ -183,7 +158,7 @@ $defaults = [
     'color_bg'            => '#f5f5f5',
     'app_name'            => APP_NAME,
     'app_slogan'          => '',
-    'font_family'         => 'inter',
+    'font_family'         => 'system',
 ];
 foreach ($defaults as $k => $v) {
     if (!isset($s[$k]) || $s[$k] === '') $s[$k] = $v;
@@ -361,11 +336,20 @@ include __DIR__ . '/../includes/navbar.php';
                             <select name="font_family" id="fontSelect" class="form-select">
                                 <?php
                                 $fonts = [
-                                    'inter'   => 'Inter (Standard)',
-                                    'lato'    => 'Lato',
-                                    'poppins' => 'Poppins',
-                                    'roboto'  => 'Roboto',
-                                    'oswald'  => 'Oswald',
+                                    'system'    => 'Modern (Standard)',
+                                    'humanist'  => 'Freundlich',
+                                    'geometric' => 'Geometrisch',
+                                    'classic'   => 'Klassisch (Serif)',
+                                    'condensed' => 'Schmal',
+                                    'mono'      => 'Technisch (Monospace)',
+                                ];
+                                $fontStacks = [
+                                    'system'    => "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+                                    'humanist'  => "'Segoe UI', Candara, 'Trebuchet MS', Verdana, sans-serif",
+                                    'geometric' => "Futura, 'Century Gothic', 'Avenir Next', Avenir, sans-serif",
+                                    'classic'   => "Georgia, 'Times New Roman', serif",
+                                    'condensed' => "'Arial Narrow', 'Roboto Condensed', Impact, sans-serif",
+                                    'mono'      => "'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace",
                                 ];
                                 foreach ($fonts as $fk => $fl):
                                 ?>
@@ -376,11 +360,13 @@ include __DIR__ . '/../includes/navbar.php';
                             </select>
                         </div>
                         <div class="p-3 border rounded" id="fontPreview"
-                             style="font-family: '<?= htmlspecialchars($fonts[$s['font_family']] ?? 'Inter') ?>', sans-serif;">
+                             style="font-family: <?= htmlspecialchars($fontStacks[$s['font_family']] ?? $fontStacks['system']) ?>;">
                             <p class="mb-1 fw-bold">Schriftvorschau</p>
                             <p class="mb-0 text-muted small">Reservierungen, Events und mehr – in Ihrer gewählten Schrift.</p>
                         </div>
-                        <div class="form-text mt-2">Schriftarten werden von Google Fonts geladen.</div>
+                        <div class="form-text mt-2">
+                            System-Schriften – kein Download nötig, funktioniert auch offline.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -425,9 +411,9 @@ include __DIR__ . '/../includes/navbar.php';
                         <input type="hidden" name="post_action" value="upload_logo">
                         <div class="mb-2">
                             <input type="file" name="logo_file" class="form-control form-control-sm"
-                                   accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml">
+                                   accept="image/png,image/jpeg,image/gif,image/webp">
                         </div>
-                        <div class="form-text mb-2">PNG, JPG, GIF, WebP oder SVG – max. 2 MB. Empfohlen: quadratisch, mind. 200×200 px.</div>
+                        <div class="form-text mb-2">PNG, JPG, GIF oder WebP – max. 2 MB. Empfohlen: quadratisch, mind. 200×200 px.</div>
                         <button type="submit" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-upload me-1"></i>Logo hochladen
                         </button>
@@ -545,28 +531,21 @@ $extraScripts = <<<HTML
         if (name  && p)  { name.style.color = p; }
     }
 
-    // ─── Schriftart-Vorschau ──────────────────────────────────────────────
+    // ─── Schriftart-Vorschau (System-Schriften, kein Nachladen nötig) ─────
     var fontSelect  = document.getElementById('fontSelect');
     var fontPreview = document.getElementById('fontPreview');
-    var fontGoogleMap = {
-        'lato':    'Lato',
-        'poppins': 'Poppins',
-        'roboto':  'Roboto',
-        'oswald':  'Oswald',
-        'inter':   'Inter'
+    var fontStacks = {
+        'system':    "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+        'humanist':  "'Segoe UI', Candara, 'Trebuchet MS', Verdana, sans-serif",
+        'geometric': "Futura, 'Century Gothic', 'Avenir Next', Avenir, sans-serif",
+        'classic':   "Georgia, 'Times New Roman', serif",
+        'condensed': "'Arial Narrow', 'Roboto Condensed', Impact, sans-serif",
+        'mono':      "'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace"
     };
     if (fontSelect) {
         fontSelect.addEventListener('change', function () {
-            var font = fontGoogleMap[fontSelect.value] || 'Inter';
-            // Dynamisch laden
-            if (fontSelect.value !== 'inter') {
-                var link = document.createElement('link');
-                link.rel  = 'stylesheet';
-                link.href = 'https://fonts.googleapis.com/css2?family=' +
-                            encodeURIComponent(font) + ':wght@400;700&display=swap';
-                document.head.appendChild(link);
-            }
-            if (fontPreview) fontPreview.style.fontFamily = "'" + font + "', sans-serif";
+            var stack = fontStacks[fontSelect.value] || fontStacks['system'];
+            if (fontPreview) fontPreview.style.fontFamily = stack;
         });
     }
 })();

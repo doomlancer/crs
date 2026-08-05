@@ -133,5 +133,66 @@ if (isset($_SESSION['letzte_aktivitaet'])) {
 }
 $_SESSION['letzte_aktivitaet'] = time();
 
+// ─────────────────────────────────────────────────────────────────────────
+// Content-Security-Policy mit Nonce
+// Wird hier (statt in .htaccess) gesetzt, damit der Nonce pro Request passt.
+// Inline-<script>-Blöcke bekommen den Nonce in footer.php/header.php injiziert.
+// ─────────────────────────────────────────────────────────────────────────
+define('CSP_NONCE', bin2hex(random_bytes(16)));
+
+if (!headers_sent()) {
+    $cspSelf = "'self'";
+    $csp = [
+        "default-src {$cspSelf}",
+        "script-src {$cspSelf} 'nonce-" . CSP_NONCE . "'",
+        // style-src: 'unsafe-inline' ist nötig – die Views nutzen dynamische
+        // style="width:X%"-Attribute (Fortschrittsbalken u.ä.). Inline-Styles
+        // sind deutlich ungefährlicher als Inline-Skripte.
+        "style-src {$cspSelf} 'unsafe-inline'",
+        "font-src {$cspSelf}",
+        "img-src {$cspSelf} data:",
+        "connect-src {$cspSelf}",
+        "frame-ancestors 'none'",
+        "base-uri {$cspSelf}",
+        "form-action {$cspSelf} https://www.paypal.com https://www.sandbox.paypal.com",
+    ];
+    header('Content-Security-Policy: ' . implode('; ', $csp));
+}
+
+/**
+ * Fügt allen <script>-Tags in einem HTML-Schnipsel den CSP-Nonce hinzu.
+ * Damit funktionieren die $extraScripts-Blöcke aller Seiten ohne 'unsafe-inline'.
+ */
+function withCspNonce(string $html): string {
+    return preg_replace('/<script(?![^>]*\bnonce=)/i', '<script nonce="' . CSP_NONCE . '"', $html);
+}
+
 define('PAYPAL_EMAIL',   $_ENV['PAYPAL_EMAIL']   ?? 'marc.gunit@gmail.com');
 define('PAYPAL_SANDBOX', (bool)($_ENV['PAYPAL_SANDBOX'] ?? false));
+
+// ─────────────────────────────────────────────────────────────────────────
+// Geheimnis zum Signieren der Ticket-QR-Codes (HMAC).
+// Ohne gültige Signatur wird ein Ticket beim Check-in abgelehnt – damit sind
+// erfundene oder abgeänderte Buchungsnummern wertlos.
+// Wird kein Wert vorgegeben, erzeugt die App einmalig einen und legt ihn
+// unter uploads/.ticket_secret ab (außerhalb des Web-Zugriffs gesperrt).
+// ─────────────────────────────────────────────────────────────────────────
+if (!empty($_ENV['TICKET_SECRET'])) {
+    define('TICKET_SECRET', $_ENV['TICKET_SECRET']);
+} else {
+    $__secretFile = __DIR__ . '/uploads/.ticket_secret';
+    if (is_readable($__secretFile)) {
+        define('TICKET_SECRET', trim((string)file_get_contents($__secretFile)));
+    } else {
+        $__generated = bin2hex(random_bytes(32));
+        if (!is_dir(__DIR__ . '/uploads')) {
+            @mkdir(__DIR__ . '/uploads', 0755, true);
+        }
+        if (@file_put_contents($__secretFile, $__generated) !== false) {
+            @chmod($__secretFile, 0600);
+        }
+        define('TICKET_SECRET', $__generated);
+        unset($__generated);
+    }
+    unset($__secretFile);
+}

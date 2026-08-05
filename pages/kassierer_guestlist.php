@@ -21,31 +21,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $redirectEventId = (int)($_POST['event_id'] ?? 0);
 
         if ($action === 'bulk_checkin') {
+            // Nutzt die zentrale Check-in-Funktion (functions.php) – gleiche
+            // Prüfungen und gleicher Audit-Eintrag wie Scanner und Dashboard.
             $ids = array_values(array_filter(array_map('intval', $_POST['reservation_ids'] ?? [])));
-            $ok  = 0;
-            foreach ($ids as $rid) {
-                try {
-                    $stmtR = $pdo->prepare(
-                        'SELECT r.id, r.seat_id, r.status, r.buchungsnummer, u.vorname, u.nachname
-                         FROM reservations r JOIN users u ON u.id = r.user_id WHERE r.id = ?'
-                    );
-                    $stmtR->execute([$rid]);
-                    $row = $stmtR->fetch();
-                    if (!$row || $row['status'] === 'eingecheckt') continue;
-                    $pdo->beginTransaction();
-                    $pdo->prepare('UPDATE reservations SET status = ? WHERE id = ?')->execute(['eingecheckt', $rid]);
-                    $pdo->prepare('UPDATE seats SET status = ? WHERE id = ?')->execute(['besetzt', $row['seat_id']]);
-                    $pdo->commit();
-                    logAudit('CHECK_IN', 'reservations', $rid,
-                        json_encode(['buchungsnummer' => $row['buchungsnummer'], 'gast' => $row['vorname'] . ' ' . $row['nachname']]));
-                    $ok++;
-                } catch (Exception $ex) {
-                    if ($pdo->inTransaction()) $pdo->rollBack();
-                    error_log('Bulk-Checkin Fehler rid=' . $rid . ': ' . $ex->getMessage());
-                }
-            }
-            setFlash($ok > 0 ? 'success' : 'warning', $ok . ' Gast/Gäste erfolgreich eingecheckt.');
             $eid = (int)($_POST['event_id'] ?? 0);
+            $ok = 0; $skip = 0;
+            foreach ($ids as $rid) {
+                $r = checkinReservation($rid, $eid > 0 ? $eid : null);
+                if ($r['ok']) { $ok++; } else { $skip++; }
+            }
+            $msg = $ok . ' Gast/Gäste eingecheckt.';
+            if ($skip > 0) $msg .= ' ' . $skip . ' übersprungen (bereits eingecheckt oder ungültig).';
+            setFlash($ok > 0 ? 'success' : 'warning', $msg);
             redirect('/pages/kassierer_guestlist.php' . ($eid ? '?event_id=' . $eid : ''));
         }
 
@@ -71,28 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $gastName = $res['vorname'] . ' ' . $res['nachname'];
 
                 if ($action === 'checkin') {
-                    if ($res['res_status'] === 'eingecheckt') {
-                        throw new RuntimeException('Gast ist bereits eingecheckt.');
+                    // Zentrale Check-in-Funktion (setzt auch Zeitstempel und
+                    // behandelt Freitickets ohne Sitzplatz korrekt).
+                    $r = checkinReservation($reservationId, $redirectEventId > 0 ? $redirectEventId : null);
+                    if (!$r['ok']) {
+                        throw new RuntimeException($r['message']);
                     }
-                    $pdo->beginTransaction();
-
-                    $pdo->prepare('UPDATE reservations SET status = ? WHERE id = ?')
-                        ->execute(['eingecheckt', $reservationId]);
-
-                    $pdo->prepare('UPDATE seats SET status = ? WHERE id = ?')
-                        ->execute(['besetzt', $res['seat_id']]);
-
-                    $pdo->commit();
-
-                    logAudit(
-                        'CHECK_IN',
-                        'reservations',
-                        $reservationId,
-                        json_encode([
-                            'buchungsnummer' => $res['buchungsnummer'],
-                            'gast'           => $gastName,
-                        ])
-                    );
                     setFlash('success', 'Check-in für ' . htmlspecialchars($gastName) . ' erfolgreich.');
 
                 } elseif ($action === 'bezahlt') {

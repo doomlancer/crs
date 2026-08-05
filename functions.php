@@ -442,6 +442,34 @@ function getAllSettings(): array {
     }
 }
 
+/**
+ * Stellt sicher, dass die Check-in-Spalten aus Migration 007 vorhanden sind.
+ * Wird beim ersten Check-in-Zugriff aufgerufen, damit auf bestehenden
+ * Installationen kein manueller Migrationsschritt nötig ist.
+ */
+function ensureCheckinColumns(): bool {
+    static $done = null;
+    if ($done !== null) return $done;
+
+    $pdo = getDB();
+    try {
+        $pdo->query('SELECT eingecheckt_am FROM reservations LIMIT 1');
+        return $done = true;
+    } catch (PDOException $e) {
+        try {
+            $pdo->exec('ALTER TABLE reservations
+                        ADD COLUMN eingecheckt_am DATETIME DEFAULT NULL,
+                        ADD COLUMN eingecheckt_von INT DEFAULT NULL');
+            try { $pdo->exec('ALTER TABLE reservations ADD INDEX idx_eingecheckt_am (eingecheckt_am)'); } catch (PDOException $i) {}
+            try { $pdo->exec('ALTER TABLE reservations ADD INDEX idx_event_status (event_id, status)'); } catch (PDOException $i) {}
+            return $done = true;
+        } catch (PDOException $e2) {
+            error_log('Check-in-Migration fehlgeschlagen: ' . $e2->getMessage());
+            return $done = false;
+        }
+    }
+}
+
 function settingsTableExists(): bool {
     static $exists = null;
     if ($exists === null) {
@@ -453,4 +481,320 @@ function settingsTableExists(): bool {
         }
     }
     return $exists;
+}
+
+// =====================
+// Sicherer Bild-Upload
+// =====================
+
+/**
+ * Nimmt eine hochgeladene Bilddatei entgegen und speichert sie sicher.
+ *
+ * Sicherheitsprinzip: Weder der vom Browser gemeldete MIME-Typ ($_FILES['type'])
+ * noch die vom Client stammende Dateiendung werden ausgewertet – beide sind
+ * frei fälschbar. Stattdessen entscheidet ausschließlich getimagesize(), das
+ * den tatsächlichen Bildinhalt prüft. Die Endung wird aus dem erkannten Typ
+ * abgeleitet, der Dateiname serverseitig neu vergeben.
+ *
+ * SVG ist bewusst NICHT erlaubt: SVG-Dateien können <script> enthalten und
+ * würden beim direkten Aufruf als Stored XSS im eigenen Origin ausgeführt.
+ *
+ * @param array  $file      Eintrag aus $_FILES
+ * @param string $prefix    Namenspräfix, z.B. 'logo'
+ * @param int    $maxBytes  Maximale Dateigröße
+ * @param array  $allowed   Erlaubte IMAGETYPE_*-Konstanten
+ * @return array{ok:bool, name?:string, error?:string}
+ */
+function saveUploadedImage(
+    array $file,
+    string $prefix,
+    int $maxBytes = 2097152,
+    array $allowed = [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_WEBP]
+): array {
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        $msg = match ($file['error'] ?? -1) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'Die Datei ist zu groß.',
+            UPLOAD_ERR_NO_FILE                        => 'Bitte wählen Sie eine Datei aus.',
+            UPLOAD_ERR_PARTIAL                        => 'Der Upload wurde abgebrochen.',
+            default                                   => 'Upload fehlgeschlagen.',
+        };
+        return ['ok' => false, 'error' => $msg];
+    }
+
+    // Muss wirklich über HTTP hochgeladen worden sein (verhindert Pfad-Tricks)
+    if (!is_uploaded_file($file['tmp_name'])) {
+        return ['ok' => false, 'error' => 'Ungültiger Upload.'];
+    }
+
+    if (($file['size'] ?? 0) > $maxBytes) {
+        return ['ok' => false, 'error' => 'Datei zu groß (max. ' . round($maxBytes / 1048576, 1) . ' MB).'];
+    }
+
+    // Entscheidend: echter Bildinhalt statt Client-Angaben
+    $info = @getimagesize($file['tmp_name']);
+    if ($info === false || !isset($info[2])) {
+        return ['ok' => false, 'error' => 'Die Datei ist kein gültiges Bild.'];
+    }
+
+    $type = $info[2];
+    if (!in_array($type, $allowed, true)) {
+        return ['ok' => false, 'error' => 'Dieses Bildformat wird nicht unterstützt.'];
+    }
+
+    // Endung aus dem ERKANNTEN Typ ableiten, nie aus dem Dateinamen
+    $ext = match ($type) {
+        IMAGETYPE_PNG  => 'png',
+        IMAGETYPE_JPEG => 'jpg',
+        IMAGETYPE_GIF  => 'gif',
+        IMAGETYPE_WEBP => 'webp',
+        IMAGETYPE_ICO  => 'ico',
+        default        => null,
+    };
+    if ($ext === null) {
+        return ['ok' => false, 'error' => 'Dieses Bildformat wird nicht unterstützt.'];
+    }
+
+    if (!is_dir(UPLOAD_DIR) && !mkdir(UPLOAD_DIR, 0755, true) && !is_dir(UPLOAD_DIR)) {
+        return ['ok' => false, 'error' => 'Upload-Verzeichnis nicht beschreibbar.'];
+    }
+
+    // Serverseitig vergebener Name – keine Client-Eingabe im Dateinamen
+    $name = $prefix . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+
+    if (!move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $name)) {
+        return ['ok' => false, 'error' => 'Datei konnte nicht gespeichert werden (Berechtigungen prüfen).'];
+    }
+    @chmod(UPLOAD_DIR . $name, 0644);
+
+    return ['ok' => true, 'name' => $name];
+}
+
+/**
+ * Löscht eine zuvor hochgeladene Datei sicher aus dem Upload-Verzeichnis.
+ * Schützt gegen Path-Traversal, indem nur der Basename verwendet wird.
+ */
+function deleteUploadedFile(string $name): void {
+    $name = basename($name);
+    if ($name === '' || $name === '.' || $name === '..') return;
+    $path = UPLOAD_DIR . $name;
+    if (is_file($path)) {
+        @unlink($path);
+    }
+}
+
+// =====================
+// Ticket-Signatur (Manipulationsschutz)
+// =====================
+
+/**
+ * Erzeugt den signierten Inhalt für den Ticket-QR-Code.
+ *
+ * Format: "<buchungsnummer>.<signatur>"
+ * Die Signatur ist ein gekürzter HMAC-SHA256 über die Buchungsnummer mit
+ * TICKET_SECRET. Ohne Kenntnis des Geheimnisses lässt sich zu einer
+ * beliebigen Buchungsnummer keine gültige Signatur erzeugen.
+ */
+function ticketPayload(string $buchungsnummer): string {
+    return $buchungsnummer . '.' . ticketSignature($buchungsnummer);
+}
+
+/**
+ * Signatur zu einer Buchungsnummer berechnen (16 Hex-Zeichen = 64 Bit).
+ */
+function ticketSignature(string $buchungsnummer): string {
+    return substr(hash_hmac('sha256', $buchungsnummer, TICKET_SECRET), 0, 16);
+}
+
+/**
+ * Prüft einen gescannten QR-Inhalt und gibt die Buchungsnummer zurück.
+ * Liefert null, wenn Format oder Signatur ungültig sind.
+ *
+ * Der Vergleich nutzt hash_equals (laufzeitkonstant), um Timing-Angriffe
+ * auf die Signatur auszuschließen.
+ */
+function verifyTicketPayload(string $payload): ?string {
+    $payload = trim($payload);
+    if (!str_contains($payload, '.')) {
+        return null;
+    }
+    [$bn, $sig] = explode('.', $payload, 2);
+    $bn  = trim($bn);
+    $sig = trim($sig);
+    if ($bn === '' || $sig === '') {
+        return null;
+    }
+    if (!hash_equals(ticketSignature($bn), $sig)) {
+        return null;
+    }
+    return $bn;
+}
+
+// =====================
+// Check-in (zentral)
+// =====================
+
+/**
+ * Checkt eine Reservierung ein. Einzige Stelle, an der ein Check-in passiert –
+ * Dashboard, Gästeliste und Scanner rufen alle diese Funktion auf.
+ *
+ * Prüfungen:
+ *  - Reservierung existiert
+ *  - gehört zum erwarteten Event (verhindert Tickets aus anderen/alten Events)
+ *  - ist noch nicht eingecheckt (verhindert Mehrfachnutzung)
+ *  - ist nicht storniert/abgerechnet
+ *
+ * Läuft vollständig in einer Transaktion mit Zeilensperre (FOR UPDATE), damit
+ * zwei gleichzeitige Scans desselben Tickets nicht beide durchgehen.
+ *
+ * @return array{ok:bool, code:string, message:string, data?:array}
+ */
+function checkinReservation(int $reservationId, ?int $expectedEventId = null): array {
+    $pdo = getDB();
+    ensureCheckinColumns();
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare(
+            "SELECT r.id, r.seat_id, r.status, r.buchungsnummer, r.event_id, r.eingecheckt_am,
+                    u.vorname, u.nachname,
+                    e.name AS event_name,
+                    t.tischnummer, s.sitzplatznummer,
+                    p.status AS zahl_status, p.betrag, p.zahlungsart
+             FROM reservations r
+             INNER JOIN users  u ON u.id = r.user_id
+             INNER JOIN events e ON e.id = r.event_id
+             LEFT  JOIN seats  s ON s.id = r.seat_id
+             LEFT  JOIN tables t ON t.id = s.table_id
+             LEFT  JOIN payments p ON p.reservation_id = r.id
+             WHERE r.id = ?
+             FOR UPDATE"
+        );
+        $stmt->execute([$reservationId]);
+        $res = $stmt->fetch();
+
+        if (!$res) {
+            $pdo->rollBack();
+            return ['ok' => false, 'code' => 'not_found', 'message' => 'Ticket nicht gefunden.'];
+        }
+
+        $gast = trim(($res['vorname'] ?? '') . ' ' . ($res['nachname'] ?? ''));
+
+        // Ticket muss zum laufenden Event gehören
+        if ($expectedEventId !== null && (int)$res['event_id'] !== $expectedEventId) {
+            $pdo->rollBack();
+            return [
+                'ok'      => false,
+                'code'    => 'wrong_event',
+                'message' => 'Ticket gehört zu einer anderen Veranstaltung (' . $res['event_name'] . ').',
+                'data'    => ['gast' => $gast],
+            ];
+        }
+
+        if ($res['status'] === 'eingecheckt') {
+            $pdo->rollBack();
+            $zeit = $res['eingecheckt_am'] ? date('H:i', strtotime($res['eingecheckt_am'])) : null;
+            return [
+                'ok'      => false,
+                'code'    => 'already',
+                'message' => 'Bereits eingecheckt' . ($zeit ? " (um {$zeit} Uhr)" : '') . '.',
+                'data'    => ['gast' => $gast],
+            ];
+        }
+
+        if ($res['status'] !== 'geplant') {
+            $pdo->rollBack();
+            return [
+                'ok'      => false,
+                'code'    => 'invalid_status',
+                'message' => 'Ticket ist nicht gültig (Status: ' . $res['status'] . ').',
+                'data'    => ['gast' => $gast],
+            ];
+        }
+
+        $now    = date('Y-m-d H:i:s');
+        $userId = $_SESSION['user_id'] ?? null;
+
+        $pdo->prepare(
+            "UPDATE reservations
+             SET status = 'eingecheckt', eingecheckt_am = ?, eingecheckt_von = ?
+             WHERE id = ?"
+        )->execute([$now, $userId, $reservationId]);
+
+        // Sitzplatz nur bei Tischplan-Events (Freitickets haben seat_id = NULL)
+        if (!empty($res['seat_id'])) {
+            $pdo->prepare("UPDATE seats SET status = 'besetzt' WHERE id = ?")
+                ->execute([$res['seat_id']]);
+        }
+
+        $pdo->commit();
+
+        logAudit('CHECK_IN', 'reservations', $reservationId, json_encode([
+            'buchungsnummer' => $res['buchungsnummer'],
+            'gast'           => $gast,
+        ], JSON_UNESCAPED_UNICODE));
+
+        return [
+            'ok'      => true,
+            'code'    => 'ok',
+            'message' => 'Check-in erfolgreich.',
+            'data'    => [
+                'reservation_id' => $reservationId,
+                'buchungsnummer' => $res['buchungsnummer'],
+                'gast'           => $gast,
+                'vorname'        => $res['vorname'],
+                'nachname'       => $res['nachname'],
+                'event_name'     => $res['event_name'],
+                'tischnummer'    => $res['tischnummer'],
+                'sitzplatznummer'=> $res['sitzplatznummer'],
+                'freies_ticket'  => empty($res['seat_id']),
+                'zahl_status'    => $res['zahl_status'] ?? 'offen',
+                'betrag'         => $res['betrag'] ?? 0,
+                'zahlungsart'    => $res['zahlungsart'] ?? 'bar',
+                'zeit'           => $now,
+            ],
+        ];
+
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('Check-in Fehler: ' . $e->getMessage());
+        return ['ok' => false, 'code' => 'error', 'message' => 'Technischer Fehler beim Check-in.'];
+    }
+}
+
+/**
+ * Check-in anhand eines gescannten QR-Inhalts ODER einer Buchungsnummer.
+ * $requireSignature = true erzwingt einen gültig signierten QR-Code.
+ */
+function checkinByPayload(string $payload, ?int $expectedEventId = null, bool $requireSignature = true): array {
+    $payload = trim($payload);
+
+    if (str_contains($payload, '.')) {
+        $bn = verifyTicketPayload($payload);
+        if ($bn === null) {
+            return ['ok' => false, 'code' => 'invalid_signature',
+                    'message' => 'Ungültiger oder manipulierter QR-Code.'];
+        }
+    } else {
+        // Kein Signaturteil: nur erlaubt, wenn manuelle Eingabe zugelassen ist
+        if ($requireSignature) {
+            return ['ok' => false, 'code' => 'invalid_signature',
+                    'message' => 'Ungültiger QR-Code (keine Signatur).'];
+        }
+        $bn = $payload;
+    }
+
+    if (!preg_match('/^KARN-\d{4}-[0-9A-F]{6}$/i', $bn)) {
+        return ['ok' => false, 'code' => 'invalid_format', 'message' => 'Ungültige Buchungsnummer.'];
+    }
+
+    $stmt = getDB()->prepare('SELECT id FROM reservations WHERE buchungsnummer = ? LIMIT 1');
+    $stmt->execute([$bn]);
+    $id = $stmt->fetchColumn();
+
+    if (!$id) {
+        return ['ok' => false, 'code' => 'not_found', 'message' => 'Ticket nicht gefunden.'];
+    }
+
+    return checkinReservation((int)$id, $expectedEventId);
 }

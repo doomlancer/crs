@@ -4,21 +4,14 @@
 ErrorDocument 403 /pages/error_403.php
 ErrorDocument 404 /pages/error_404.php
 
-# PHP-Ausführung in uploads/ blockieren; Bilddateien bleiben zugänglich
+# PHP-Ausführung in uploads/ blockieren; Bilddateien bleiben zugänglich.
+# Hinweis: <FilesMatch> prüft NUR den Dateinamen, nie den Pfad – ein Muster wie
+# "^uploads/..." greift dort niemals. Der eigentliche Schutz steht daher in
+# uploads/.htaccess; hier zusätzlich als Rewrite-Regel (Defense in Depth).
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar)$ - [F,L]
+    RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar|cgi|pl|asp|sh)$ - [F,L]
 </IfModule>
-
-<FilesMatch "^uploads/.*\.(php[0-9]?|phtml|phar)$">
-    <IfModule mod_authz_core.c>
-        Require all denied
-    </IfModule>
-    <IfModule !mod_authz_core.c>
-        Order Allow,Deny
-        Deny from all
-    </IfModule>
-</FilesMatch>
 
 # Sensible Dateien sperren
 <FilesMatch "\.(sql|log|env|ini|conf|bak)$">
@@ -37,8 +30,11 @@ ErrorDocument 404 /pages/error_404.php
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-XSS-Protection "1; mode=block"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
-    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://www.paypal.com https://www.sandbox.paypal.com"
+    # camera=(self): nötig für den QR-Scanner des Kassierers
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
+    # Die Content-Security-Policy wird in config.php gesetzt (Nonce pro Request).
+    # Sie darf hier NICHT zusätzlich stehen – zwei CSP-Header werden kombiniert
+    # (jeweils restriktivste gewinnt) und würden die Nonce-Freigabe aufheben.
 </IfModule>
 
 # Caching für statische Assets

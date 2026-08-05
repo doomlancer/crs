@@ -13,58 +13,19 @@ $today  = date('Y-m-d');
 $errors = [];
 
 // ─── POST-Handler: Schnell-Check-in ──────────────────────────────────────────
+// Nutzt dieselbe zentrale Funktion wie Scanner und Gästeliste (functions.php).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'checkin') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         setFlash('error', 'Ungültiger Sicherheitstoken.');
     } else {
         $resId = (int)($_POST['reservation_id'] ?? 0);
+        $eid   = (int)($_POST['event_id'] ?? 0);
         if ($resId > 0) {
-            try {
-                $pdo->beginTransaction();
-
-                // Reservierung laden
-                $stmtRes = $pdo->prepare(
-                    'SELECT r.id, r.seat_id, r.status, r.buchungsnummer,
-                            u.vorname, u.nachname
-                     FROM reservations r
-                     INNER JOIN users u ON u.id = r.user_id
-                     WHERE r.id = ?'
-                );
-                $stmtRes->execute([$resId]);
-                $res = $stmtRes->fetch();
-
-                if (!$res) {
-                    throw new RuntimeException('Reservierung nicht gefunden.');
-                }
-                if ($res['status'] === 'eingecheckt') {
-                    throw new RuntimeException('Gast ist bereits eingecheckt.');
-                }
-
-                // Reservierungsstatus setzen
-                $pdo->prepare('UPDATE reservations SET status = ? WHERE id = ?')
-                    ->execute(['eingecheckt', $resId]);
-
-                // Sitzplatz auf besetzt setzen (nur bei Tischplan-Events)
-                if ($res['seat_id']) {
-                    $pdo->prepare('UPDATE seats SET status = ? WHERE id = ?')
-                        ->execute(['besetzt', $res['seat_id']]);
-                }
-
-                $pdo->commit();
-
-                logAudit(
-                    'CHECK_IN',
-                    'reservations',
-                    $resId,
-                    json_encode([
-                        'buchungsnummer' => $res['buchungsnummer'],
-                        'gast'           => $res['vorname'] . ' ' . $res['nachname'],
-                    ])
-                );
-                setFlash('success', 'Check-in für ' . htmlspecialchars($res['vorname'] . ' ' . $res['nachname']) . ' erfolgreich.');
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                setFlash('error', 'Fehler beim Check-in: ' . htmlspecialchars($e->getMessage()));
+            $result = checkinReservation($resId, $eid > 0 ? $eid : null);
+            if ($result['ok']) {
+                setFlash('success', 'Check-in für ' . ($result['data']['gast'] ?? '') . ' erfolgreich.');
+            } else {
+                setFlash('error', $result['message']);
             }
         }
     }
@@ -108,20 +69,23 @@ $offeneZahlungen = (int)$pdo->query(
 )->fetchColumn();
 
 // ─── KPI 3: Check-ins heute ──────────────────────────────────────────────────
-$stmtCI = $pdo->prepare(
-    "SELECT COUNT(*) FROM reservations
-     WHERE status = 'eingecheckt'
-       AND DATE(erstellt_am) = ?"
-);
-$stmtCI->execute([$today]);
-// Check-ins werden anhand des Audit-Logs gezählt (genauer)
-$stmtCIAudit = $pdo->prepare(
-    "SELECT COUNT(*) FROM audit_log
-     WHERE aktion = 'CHECK_IN'
-       AND DATE(zeitstempel) = ?"
-);
-$stmtCIAudit->execute([$today]);
-$checkInsHeute = (int)$stmtCIAudit->fetchColumn();
+// Primär über die Spalte eingecheckt_am (Migration 007) – zuverlässiger als das
+// Audit-Log. Fallback auf das Audit-Log, falls die Migration noch nicht lief.
+try {
+    $stmtCI = $pdo->prepare(
+        "SELECT COUNT(*) FROM reservations
+         WHERE status = 'eingecheckt' AND DATE(eingecheckt_am) = ?"
+    );
+    $stmtCI->execute([$today]);
+    $checkInsHeute = (int)$stmtCI->fetchColumn();
+} catch (PDOException $e) {
+    $stmtCIAudit = $pdo->prepare(
+        "SELECT COUNT(*) FROM audit_log
+         WHERE aktion = 'CHECK_IN' AND DATE(zeitstempel) = ?"
+    );
+    $stmtCIAudit->execute([$today]);
+    $checkInsHeute = (int)$stmtCIAudit->fetchColumn();
+}
 
 // ─── KPI 4: Auslastung nächste Events ────────────────────────────────────────
 $auslastungData = [];
@@ -522,4 +486,138 @@ include __DIR__ . '/../includes/navbar.php';
 
 </main>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<!-- ══ Live-Check-in-Overlay ═══════════════════════════════════════════════
+     Erscheint groß auf dem Bildschirm, sobald am Einlass gescannt wurde. -->
+<div id="checkin-overlay"
+     class="position-fixed top-0 start-0 w-100 h-100 d-none align-items-center justify-content-center"
+     style="background:rgba(0,0,0,.88);z-index:2000;backdrop-filter:blur(3px);">
+    <div class="text-center px-3" style="max-width:900px;">
+        <div id="ov-icon" class="lh-1 mb-3" style="font-size:6rem;">✓</div>
+        <div id="ov-name" class="fw-bold text-white lh-1 mb-3"
+             style="font-size:clamp(2.5rem,9vw,6rem);word-break:break-word;">&nbsp;</div>
+        <div id="ov-sub" class="text-white-50 mb-2" style="font-size:clamp(1rem,3vw,1.8rem);"></div>
+        <span id="ov-badge" class="badge fs-5 px-3 py-2"></span>
+        <div id="ov-queue" class="text-white-50 small mt-4"></div>
+    </div>
+</div>
+
+<!-- Live-Zähler unten rechts -->
+<div id="live-counter"
+     class="position-fixed bottom-0 end-0 m-3 px-3 py-2 rounded-pill shadow d-none"
+     style="background:rgba(0,0,0,.75);color:#fff;z-index:1500;font-variant-numeric:tabular-nums;">
+    <i class="bi bi-broadcast text-success me-1"></i>
+    <span id="lc-text">Live</span>
+</div>
+
+<?php
+$jsEid = json_encode($selectedEventId);
+$extraScripts = <<<'JS'
+<script>
+(function () {
+    'use strict';
+    var EVENT_ID = __EVENT_ID__;
+    if (!EVENT_ID) return;
+
+    var overlay = document.getElementById('checkin-overlay');
+    var ovIcon  = document.getElementById('ov-icon');
+    var ovName  = document.getElementById('ov-name');
+    var ovSub   = document.getElementById('ov-sub');
+    var ovBadge = document.getElementById('ov-badge');
+    var ovQueue = document.getElementById('ov-queue');
+    var counter = document.getElementById('live-counter');
+    var lcText  = document.getElementById('lc-text');
+
+    var since   = null;      // Zeitstempel des letzten bekannten Check-ins
+    var queue   = [];        // noch anzuzeigende Check-ins
+    var showing = false;
+    var failures = 0;
+
+    function render(item) {
+        showing = true;
+        var offen = item.zahl_status && item.zahl_status !== 'bezahlt';
+
+        ovIcon.textContent   = offen ? '!' : '✓';
+        ovIcon.style.color   = offen ? '#ffc107' : '#4ade80';
+        ovName.textContent   = item.gast || 'Gast';
+        ovSub.textContent    = item.platz + ' · ' + item.zeit_kurz + ' Uhr';
+
+        ovBadge.textContent  = offen ? 'ZAHLUNG OFFEN' : 'Check-in';
+        ovBadge.className    = 'badge fs-5 px-3 py-2 ' + (offen ? 'bg-warning text-dark' : 'bg-success');
+
+        ovQueue.textContent  = queue.length ? ('+ ' + queue.length + ' weitere') : '';
+
+        overlay.classList.remove('d-none');
+        overlay.classList.add('d-flex');
+
+        setTimeout(function () {
+            overlay.classList.add('d-none');
+            overlay.classList.remove('d-flex');
+            showing = false;
+            if (queue.length) render(queue.shift());
+        }, offen ? 6000 : 4000);
+    }
+
+    function enqueue(items) {
+        items.forEach(function (i) { queue.push(i); });
+        if (!showing && queue.length) render(queue.shift());
+    }
+
+    function poll() {
+        var url = '/api/checkin_feed.php?event_id=' + encodeURIComponent(EVENT_ID)
+                + (since ? '&since=' + encodeURIComponent(since) : '');
+
+        fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+        })
+        .then(function (r) {
+            if (r.status === 401 || r.status === 403) throw new Error('auth');
+            return r.json();
+        })
+        .then(function (res) {
+            failures = 0;
+            counter.classList.remove('d-none');
+            if (!res || !res.success || !res.data) return;
+
+            since = res.data.since || since;
+
+            var c = res.data.counts || {};
+            if (c.gesamt) {
+                lcText.textContent = c.eingecheckt + ' / ' + c.gesamt + ' eingecheckt';
+            } else {
+                lcText.textContent = 'Live';
+            }
+
+            if (res.data.checkins && res.data.checkins.length) {
+                enqueue(res.data.checkins);
+            }
+        })
+        .catch(function () {
+            failures++;
+            if (failures > 3) {
+                lcText.textContent = 'Verbindung unterbrochen';
+                counter.classList.remove('d-none');
+            }
+        });
+    }
+
+    // Overlay per Klick oder Escape sofort schließen
+    overlay.addEventListener('click', function () {
+        overlay.classList.add('d-none');
+        overlay.classList.remove('d-flex');
+        showing = false;
+        if (queue.length) render(queue.shift());
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && showing) overlay.click();
+    });
+
+    poll();                       // Startzeitpunkt setzen
+    setInterval(poll, 2500);      // danach alle 2,5 Sekunden prüfen
+})();
+</script>
+JS;
+$extraScripts = str_replace('__EVENT_ID__', $jsEid, $extraScripts);
+
+include __DIR__ . '/../includes/footer.php';
+?>

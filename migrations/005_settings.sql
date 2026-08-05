@@ -18,6 +18,6 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
   ('app_slogan',          ''),
   ('app_logo',            ''),
   ('app_favicon',         ''),
-  ('font_family',         'inter'),
+  ('font_family',         'system'),
   ('theme_version',       '1')
 ON DUPLICATE KEY UPDATE `setting_key` = `setting_key`;

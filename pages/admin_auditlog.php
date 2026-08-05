@@ -230,7 +230,7 @@ function auditRowClass(string $aktion): string {
                                     str_contains($aktion, 'DELETE') || str_contains($aktion, 'STONIER') => 'bg-danger',
                                     str_contains($aktion, 'ERSTELL') || str_contains($aktion, 'REGISTR') || str_contains($aktion, 'CREATE') => 'bg-primary',
                                     str_contains($aktion, 'RESERVIER')     => 'bg-purple',
-                                    str_contains($aktion, 'CHECKIN')       => 'bg-info',
+                                    str_contains($aktion, 'CHECK_IN') || str_contains($aktion, 'CHECKIN') => 'bg-info',
                                     str_contains($aktion, 'EXPORT')        => 'bg-cyan',
                                     default                                 => 'bg-warning text-dark',
                                 };

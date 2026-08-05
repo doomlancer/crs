@@ -1,94 +1,89 @@
 <?php
 /**
  * API: Gast einchecken (Kassierer/Admin)
- * POST: reservation_id, csrf_token
+ *
+ * POST-Parameter (eines davon):
+ *   - payload          signierter QR-Inhalt "KARN-JJJJ-XXXXXX.<signatur>"
+ *   - reservation_id   direkte ID (aus Listen/Buttons im Backend)
+ *   - buchungsnummer   manuelle Eingabe (nur mit Berechtigung, ohne Signatur)
+ * Weitere: csrf_token (Pflicht), event_id (optional, bindet an Veranstaltung)
+ *
+ * Die eigentliche Prüf- und Schreiblogik liegt zentral in
+ * checkinReservation()/checkinByPayload() (functions.php) – Dashboard,
+ * Gästeliste und Scanner nutzen denselben Code-Pfad.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 
+/** Antwortet je nach Aufrufart als JSON oder per Redirect mit Flash-Nachricht. */
+function checkinRespond(bool $ok, string $message, array $data = [], int $status = 200): void {
+    $wantsJson = isAjax()
+        || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')
+        || ($_POST['format'] ?? '') === 'json';
+
+    if ($wantsJson) {
+        jsonResponse(['success' => $ok, 'message' => $message, 'data' => $data ?: null], $status);
+    }
+
+    setFlash($ok ? 'success' : 'error', $message);
+
+    // Offene Weiterleitungen verhindern: nur seiteninterne Pfade zulassen.
+    $target = $_POST['redirect'] ?? '/pages/kassierer_dashboard.php';
+    if (!is_string($target) || !preg_match('#^/[A-Za-z0-9_\-/\.]*$#', $target) || str_contains($target, '..')) {
+        $target = '/pages/kassierer_dashboard.php';
+    }
+    redirect($target);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Method Not Allowed', 'data' => null], 405);
-    redirect('/pages/kassierer_dashboard.php');
+    checkinRespond(false, 'Nur POST erlaubt.', [], 405);
 }
 
 requireRole('kassierer', 'admin');
 
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    if (isAjax()) jsonResponse(['success' => false, 'message' => 'CSRF-Fehler', 'data' => null], 403);
-    setFlash('error', 'Sicherheitsfehler.');
-    redirect('/pages/kassierer_dashboard.php');
+    checkinRespond(false, 'Sicherheitsfehler. Bitte Seite neu laden.', [], 403);
 }
 
+$eventId = isset($_POST['event_id']) && (int)$_POST['event_id'] > 0
+    ? (int)$_POST['event_id']
+    : null;
+
+$payload        = trim((string)($_POST['payload'] ?? ''));
 $reservationId  = (int)($_POST['reservation_id'] ?? 0);
-$buchungsnummer = trim($_POST['buchungsnummer'] ?? '');
-if (!$reservationId && $buchungsnummer) {
-    $pdo  = getDB();
-    $stmt = $pdo->prepare('SELECT id FROM reservations WHERE buchungsnummer = ?');
-    $stmt->execute([$buchungsnummer]);
-    $reservationId = (int)($stmt->fetchColumn() ?: 0);
-}
-if (!$reservationId) {
-    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Ungültige ID', 'data' => null], 400);
-    setFlash('error', 'Ungültige Reservierungs-ID.');
-    redirect('/pages/kassierer_dashboard.php');
-}
+$buchungsnummer = trim((string)($_POST['buchungsnummer'] ?? ''));
 
-try {
-    $pdo = getDB();
-
-    // Reservierung laden und prüfen
-    $stmt = $pdo->prepare(
-        'SELECT r.id, r.status, r.buchungsnummer, r.seat_id,
-                u.vorname, u.nachname
-         FROM reservations r
-         JOIN users u ON r.user_id = u.id
-         WHERE r.id = ?'
-    );
-    $stmt->execute([$reservationId]);
-    $reservation = $stmt->fetch();
-
-    if (!$reservation) {
-        if (isAjax()) jsonResponse(['success' => false, 'message' => 'Reservierung nicht gefunden', 'data' => null], 404);
-        setFlash('error', 'Reservierung nicht gefunden.');
-        redirect('/pages/kassierer_dashboard.php');
+if ($payload !== '') {
+    // Gescannter QR-Code: Signatur wird zwingend geprüft
+    $result = checkinByPayload($payload, $eventId, true);
+} elseif ($reservationId > 0) {
+    // Direkter Klick im Backend – Berechtigung wurde oben bereits geprüft
+    $result = checkinReservation($reservationId, $eventId);
+} elseif ($buchungsnummer !== '') {
+    // Manuelle Eingabe durch Kassierer/Admin (z.B. wenn der Code beschädigt ist).
+    // Ohne Signatur zulässig, aber im Audit-Log als manuell erkennbar.
+    $result = checkinByPayload($buchungsnummer, $eventId, false);
+    if ($result['ok']) {
+        logAudit('CHECK_IN_MANUELL', 'reservations',
+            $result['data']['reservation_id'] ?? null,
+            'Manueller Check-in ohne QR-Signatur: ' . $buchungsnummer);
     }
-
-    if ($reservation['status'] !== 'geplant') {
-        if (isAjax()) jsonResponse(['success' => false, 'message' => 'Gast bereits eingecheckt oder abgerechnet', 'data' => null], 409);
-        setFlash('warning', 'Gast ist bereits eingecheckt oder abgerechnet.');
-        redirect('/pages/kassierer_guestlist.php');
-    }
-
-    $pdo->beginTransaction();
-
-    // Check-in durchführen
-    $pdo->prepare('UPDATE reservations SET status = "eingecheckt" WHERE id = ?')
-        ->execute([$reservationId]);
-    $pdo->prepare("UPDATE seats SET status = 'besetzt' WHERE id = ?")
-        ->execute([$reservation['seat_id']]);
-
-    logAudit('CHECKIN', 'reservations', $reservationId,
-        "Check-in: {$reservation['buchungsnummer']} ({$reservation['vorname']} {$reservation['nachname']})");
-
-    $pdo->commit();
-
-    if (isAjax()) {
-        jsonResponse([
-            'success' => true,
-            'message' => "Gast {$reservation['vorname']} {$reservation['nachname']} erfolgreich eingecheckt.",
-            'data'    => ['buchungsnummer' => $reservation['buchungsnummer']],
-        ]);
-    }
-
-    setFlash('success', "Gast {$reservation['vorname']} {$reservation['nachname']} erfolgreich eingecheckt.");
-    $redirect = $_POST['redirect'] ?? '/pages/kassierer_guestlist.php';
-    redirect($redirect);
-
-} catch (PDOException $e) {
-    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    error_log('Check-in Fehler: ' . $e->getMessage());
-    if (isAjax()) jsonResponse(['success' => false, 'message' => 'Datenbankfehler', 'data' => null], 500);
-    setFlash('error', 'Fehler beim Check-in.');
-    redirect('/pages/kassierer_dashboard.php');
+} else {
+    checkinRespond(false, 'Kein Ticket übermittelt.', [], 400);
 }
+
+$httpStatus = $result['ok'] ? 200 : match ($result['code']) {
+    'not_found'                             => 404,
+    'already'                               => 409,
+    'invalid_signature', 'invalid_format'   => 422,
+    'wrong_event', 'invalid_status'         => 409,
+    default                                 => 500,
+};
+
+checkinRespond(
+    $result['ok'],
+    $result['message'],
+    ($result['data'] ?? []) + ['code' => $result['code']],
+    $httpStatus
+);

@@ -259,7 +259,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <tr class="collapse" id="qr-<?= $res['id'] ?>">
                                 <td colspan="10" class="bg-white text-center py-3">
                                     <div class="d-inline-block text-center p-3 border rounded shadow-sm">
-                                        <?= qrCodeImg($res['buchungsnummer'], 160, 'QR-Code ' . $res['buchungsnummer']) ?>
+                                        <?= qrCodeImg(ticketPayload($res['buchungsnummer']), 170, 'QR-Code ' . $res['buchungsnummer']) ?>
                                         <div class="mt-2">
                                             <code class="fs-6 fw-bold text-primary"><?= htmlspecialchars($res['buchungsnummer']) ?></code><br>
                                             <small class="text-muted"><?= htmlspecialchars($res['event_name']) ?> · <?= formatDatum($res['event_datum']) ?></small>
@@ -373,19 +373,9 @@ include __DIR__ . '/../includes/navbar.php';
 
 <?php
 $extraScripts = <<<'HTML'
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // ─── QR-Codes beim Aufklappen rendern ────────────────────────────────────
-    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var target = document.querySelector(this.dataset.bsTarget);
-            if (!target) return;
-            target.addEventListener('shown.bs.collapse', function() {
-                renderQrCodes(target);
-            }, { once: true });
-        });
-    });
+    // QR-Codes werden serverseitig erzeugt (includes/qrcode.php) – kein JS nötig.
 
     // ─── Multi-PayPal Sticky Bar ──────────────────────────────────────────────
     var bar      = document.getElementById('paypal-bar');
@@ -481,20 +471,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-function renderQrCodes(container) {
-    container.querySelectorAll('.qr-placeholder').forEach(function(div) {
-        if (div.querySelector('canvas')) return;
-        var content = div.dataset.content;
-        var size    = parseInt(div.dataset.size) || 160;
-        var canvas  = document.createElement('canvas');
-        div.appendChild(canvas);
-        QRCode.toCanvas(canvas, content, { width: size, margin: 2 }, function(err) {
-            if (err) {
-                div.innerHTML = '<small class="text-muted">' + content + '</small>';
-            }
-        });
-    });
-}
 </script>
 HTML;
 include __DIR__ . '/../includes/footer.php';

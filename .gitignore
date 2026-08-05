@@ -5,12 +5,14 @@ logs/
 # Uploads (Benutzerdateien)
 uploads/*
 !uploads/.gitkeep
+!uploads/.htaccess
 
 # Umgebungsvariablen (nie committen!)
 .env
 
-# Composer
-vendor/
+# Composer (nur im Projektstamm – assets/vendor/ enthält die
+# lokal ausgelieferten Frontend-Bibliotheken und MUSS mit ins Repo)
+/vendor/
 composer.lock
 
 # Node / Frontend-Build
