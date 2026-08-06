@@ -171,6 +171,10 @@ include __DIR__ . '/../includes/navbar.php';
             <a href="/pages/kassierer_scan.php" class="btn btn-warning btn-sm">
                 <i class="bi bi-qr-code-scan me-1"></i>QR-Scanner
             </a>
+            <a href="/pages/event_live_dashboard.php<?= $selectedEventId ? '?event_id=' . $selectedEventId : '' ?>"
+               class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-broadcast me-1"></i>Live-Übersicht
+            </a>
         </div>
     </div>
 

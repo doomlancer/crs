@@ -798,3 +798,186 @@ function checkinByPayload(string $payload, ?int $expectedEventId = null, bool $r
 
     return checkinReservation((int)$id, $expectedEventId);
 }
+
+// =====================
+// Live-Event-Dashboard
+// =====================
+
+/**
+ * Liefert den Live-Ampel-Zustand eines Events (Rot=nicht verkauft,
+ * Gelb=verkauft/reserviert, Grün=eingecheckt). Wird sowohl beim Seitenaufruf
+ * (Erstladung, kein leeres Grid) als auch von der Polling-API
+ * (api/event_live_grid.php) genutzt – eine einzige Quelle für die Logik.
+ *
+ * Die Farbe wird ausschließlich aus dem aktiven Reservierungsdatensatz
+ * abgeleitet (nicht aus seats.status), um keine zweite, potenziell
+ * abweichende Wahrheitsquelle zu haben. Der Statusfilter steht bewusst in
+ * der JOIN-Bedingung, nicht in einem nachgelagerten WHERE – sonst würde ein
+ * stornierter+neu gebuchter Sitz zwei Zeilen für dieselbe Kachel erzeugen.
+ *
+ * @return array{event_typ:string,tables:array,tickets:array,capacity:?array,counts:array}|null
+ */
+function getEventLiveGrid(int $eventId): ?array {
+    $pdo = getDB();
+
+    $stmtEv = $pdo->prepare('SELECT id, event_typ, max_gaeste FROM events WHERE id = ?');
+    $stmtEv->execute([$eventId]);
+    $event = $stmtEv->fetch();
+    if (!$event) return null;
+
+    $eventTyp = $event['event_typ'] ?? 'tischplan';
+    $counts   = ['rot' => 0, 'gelb' => 0, 'gruen' => 0];
+
+    if ($eventTyp === 'freie_tickets') {
+        $stmt = $pdo->prepare(
+            "SELECT r.id AS reservation_id, r.status AS res_status, r.buchungsnummer,
+                    u.vorname, u.nachname
+             FROM reservations r
+             INNER JOIN users u ON u.id = r.user_id
+             WHERE r.event_id = ? AND r.status != 'abgerechnet'
+             ORDER BY r.erstellt_am ASC"
+        );
+        $stmt->execute([$eventId]);
+
+        $tickets = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $farbe = $row['res_status'] === 'eingecheckt' ? 'gruen' : 'gelb';
+            $counts[$farbe]++;
+            $tickets[] = [
+                'reservation_id' => (int)$row['reservation_id'],
+                'buchungsnummer' => $row['buchungsnummer'],
+                'gast'           => trim($row['vorname'] . ' ' . $row['nachname']),
+                'farbe'          => $farbe,
+            ];
+        }
+
+        $maxGaeste = $event['max_gaeste'] !== null ? (int)$event['max_gaeste'] : null;
+        $capacity  = null;
+        if ($maxGaeste !== null) {
+            $rest = max(0, $maxGaeste - count($tickets));
+            $counts['rot'] = $rest;
+            $capacity = [
+                'max_gaeste'  => $maxGaeste,
+                'verkauft'    => count($tickets),
+                'rest'        => $rest,
+                // Rendering großer Restkapazitäten deckeln, sonst riesiges DOM
+                'ghost_tiles' => min($rest, 200),
+                'ghost_extra' => max(0, $rest - 200),
+            ];
+        }
+
+        return [
+            'event_typ' => 'freie_tickets',
+            'tables'    => [],
+            'tickets'   => $tickets,
+            'capacity'  => $capacity,
+            'counts'    => $counts,
+        ];
+    }
+
+    // Tischplan-Events
+    $stmt = $pdo->prepare(
+        "SELECT t.id AS table_id, t.tischnummer,
+                s.id AS seat_id, s.sitzplatznummer,
+                r.id AS reservation_id, r.status AS res_status, r.buchungsnummer,
+                u.vorname, u.nachname
+         FROM tables t
+         LEFT JOIN seats s ON s.table_id = t.id
+         LEFT JOIN reservations r ON r.seat_id = s.id AND r.status != 'abgerechnet'
+         LEFT JOIN users u ON u.id = r.user_id
+         WHERE t.event_id = ?
+         ORDER BY t.tischnummer ASC, s.sitzplatznummer ASC"
+    );
+    $stmt->execute([$eventId]);
+
+    $tables = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $tid = (int)$row['table_id'];
+        if (!isset($tables[$tid])) {
+            $tables[$tid] = [
+                'table_id'    => $tid,
+                'tischnummer' => (int)$row['tischnummer'],
+                'seats'       => [],
+            ];
+        }
+        if (!$row['seat_id']) continue;
+
+        if ($row['reservation_id'] === null) {
+            $farbe = 'rot';
+        } elseif ($row['res_status'] === 'eingecheckt') {
+            $farbe = 'gruen';
+        } else {
+            $farbe = 'gelb';
+        }
+        $counts[$farbe]++;
+
+        $tables[$tid]['seats'][] = [
+            'seat_id'         => (int)$row['seat_id'],
+            'sitzplatznummer' => (int)$row['sitzplatznummer'],
+            'reservation_id'  => $row['reservation_id'] !== null ? (int)$row['reservation_id'] : null,
+            'buchungsnummer'  => $row['buchungsnummer'],
+            'gast'            => $row['reservation_id'] !== null
+                                    ? trim($row['vorname'] . ' ' . $row['nachname']) : null,
+            'farbe'           => $farbe,
+        ];
+    }
+
+    return [
+        'event_typ' => 'tischplan',
+        'tables'    => array_values($tables),
+        'tickets'   => [],
+        'capacity'  => null,
+        'counts'    => $counts,
+    ];
+}
+
+/**
+ * Sucht aktive Reservierungen nach Name/E-Mail/Buchungsnummer – für die
+ * Kassierer-Ticket-Suche (verlorenes Ticket erneut anzeigen).
+ */
+function findReservationsForLookup(string $query, ?int $eventId = null, int $limit = 20): array {
+    $query = trim($query);
+    if (mb_strlen($query) < 2) return [];
+
+    $pdo = getDB();
+    $sql = "SELECT r.id AS reservation_id, r.buchungsnummer, r.status AS res_status,
+                   u.vorname, u.nachname,
+                   e.name AS event_name,
+                   t.tischnummer, s.sitzplatznummer
+            FROM reservations r
+            INNER JOIN users  u ON u.id = r.user_id
+            INNER JOIN events e ON e.id = r.event_id
+            LEFT  JOIN seats  s ON s.id = r.seat_id
+            LEFT  JOIN tables t ON t.id = s.table_id
+            WHERE r.status != 'abgerechnet'
+              AND (u.vorname LIKE :q1 OR u.nachname LIKE :q2
+                   OR CONCAT(u.vorname, ' ', u.nachname) LIKE :q3
+                   OR r.buchungsnummer LIKE :q4 OR u.email LIKE :q5)";
+    // Mit PDO::ATTR_EMULATE_PREPARES=false (siehe config.php) darf derselbe
+    // benannte Platzhalter nicht mehrfach im Query auftauchen – jede Stelle
+    // braucht einen eigenen Namen, gebunden auf denselben Suchwert.
+    $needle = '%' . $query . '%';
+    $params = ['q1' => $needle, 'q2' => $needle, 'q3' => $needle, 'q4' => $needle, 'q5' => $needle];
+
+    if ($eventId !== null) {
+        $sql .= ' AND r.event_id = :event_id';
+        $params['event_id'] = $eventId;
+    }
+    $sql .= ' ORDER BY r.erstellt_am DESC LIMIT ' . (int)$limit;
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return array_map(static function ($row) {
+        return [
+            'reservation_id' => (int)$row['reservation_id'],
+            'buchungsnummer' => $row['buchungsnummer'],
+            'gast'           => trim($row['vorname'] . ' ' . $row['nachname']),
+            'event_name'     => $row['event_name'],
+            'res_status'     => $row['res_status'],
+            'platz'          => $row['sitzplatznummer']
+                ? 'Tisch ' . $row['tischnummer'] . ' · Platz ' . $row['sitzplatznummer']
+                : 'Freies Ticket',
+        ];
+    }, $stmt->fetchAll());
+}

@@ -246,13 +246,13 @@ $stmt = $pdo->prepare(
     "SELECT r.id, r.buchungsnummer, r.status, r.preis, r.erstellt_am,
             u.id AS user_id, u.vorname, u.nachname, u.email,
             e.id AS event_id, e.name AS event_name, e.datum AS event_datum,
-            t.tischnummer,
+            t.tischnummer, s.sitzplatznummer,
             p.status AS payment_status, p.zahlungsart
      FROM reservations r
      JOIN users u  ON r.user_id  = u.id
      JOIN events e ON r.event_id = e.id
-     JOIN seats  s ON r.seat_id  = s.id
-     JOIN tables t ON s.table_id = t.id
+     LEFT JOIN seats  s ON r.seat_id  = s.id
+     LEFT JOIN tables t ON s.table_id = t.id
      LEFT JOIN payments p ON p.reservation_id = r.id
      {$whereClause}
      ORDER BY r.erstellt_am DESC"
@@ -421,9 +421,15 @@ include __DIR__ . '/../includes/navbar.php';
                             <small class="text-muted"><?= formatDatum($r['event_datum']) ?></small>
                         </td>
                         <td>
+                            <?php if ($r['tischnummer']): ?>
                             <span class="badge bg-dark">
                                 Tisch <?= $r['tischnummer'] ?>
                             </span>
+                            <?php else: ?>
+                            <span class="badge bg-success">
+                                <i class="bi bi-ticket-perforated me-1"></i>Freiticket
+                            </span>
+                            <?php endif; ?>
                         </td>
                         <td><?= statusBadge($r['status']) ?></td>
 
@@ -492,6 +498,13 @@ include __DIR__ . '/../includes/navbar.php';
                                    class="btn btn-sm btn-outline-secondary" title="Benutzer">
                                     <i class="bi bi-person-gear"></i>
                                 </a>
+
+                                <!-- QR anzeigen (verlorenes Ticket erneut zeigen) -->
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        data-reservation-id="<?= (int)$r['id'] ?>"
+                                        title="QR-Code anzeigen">
+                                    <i class="bi bi-qr-code"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -584,6 +597,29 @@ include __DIR__ . '/../includes/navbar.php';
     </div>
 </div>
 
+<!-- ══ Ticket-QR-Modal (verlorenes Ticket erneut anzeigen) ══════════════════ -->
+<div class="modal fade" id="ticketModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="tm-gast">&nbsp;</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div id="tm-qr" class="mb-3 d-flex justify-content-center"></div>
+                <div id="tm-buchungsnr" class="font-monospace fw-bold fs-5 mb-2"></div>
+                <div id="tm-details" class="text-muted small"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php
+// Hinweis: Dieses <script> lief bisher außerhalb von $extraScripts und wurde
+// dadurch von der Content-Security-Policy (Nonce nur für $extraScripts/
+// $extraHead, siehe config.php/withCspNonce()) blockiert. Korrigiert, indem
+// es hier wie auf allen anderen Seiten über $extraScripts ausgegeben wird.
+$extraScripts = <<<'HTML'
 <script>
 function filterTische(eventId) {
     var sel = document.getElementById("tischSelect");
@@ -620,6 +656,48 @@ document.getElementById("tischSelect").addEventListener("change", function() {
         anzEl.max = 20;
     }
 });
-</script>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+// QR-Code-Anzeige für ein einzelnes Ticket (z.B. bei verlorenem Ticket)
+(function() {
+    var modalEl = document.getElementById('ticketModal');
+    if (!modalEl || !window.bootstrap) return;
+
+    document.querySelectorAll('[data-reservation-id]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            document.getElementById('tm-qr').innerHTML =
+                '<div class="spinner-border text-warning" role="status"></div>';
+            document.getElementById('tm-gast').textContent = 'Lade …';
+            document.getElementById('tm-buchungsnr').textContent = '';
+            document.getElementById('tm-details').textContent = '';
+            modal.show();
+
+            fetch('/api/ticket_qr.php?reservation_id=' + encodeURIComponent(btn.dataset.reservationId), {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (!res || !res.success) {
+                    document.getElementById('tm-gast').textContent = 'Nicht gefunden';
+                    document.getElementById('tm-details').textContent = (res && res.message) || 'Fehler.';
+                    return;
+                }
+                var d = res.data;
+                document.getElementById('tm-gast').textContent = d.gast;
+                document.getElementById('tm-qr').innerHTML = d.qr_html;
+                document.getElementById('tm-buchungsnr').textContent = d.buchungsnummer;
+                var zahlHinweis = d.zahl_status !== 'bezahlt' ? ' · Zahlung offen' : '';
+                document.getElementById('tm-details').textContent =
+                    d.event_name + ' · ' + d.event_datum + ' · ' + d.platz + zahlHinweis;
+            })
+            .catch(function() {
+                document.getElementById('tm-gast').textContent = 'Netzwerkfehler';
+            });
+        });
+    });
+})();
+</script>
+HTML;
+include __DIR__ . '/../includes/footer.php';
+?>

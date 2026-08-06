@@ -154,8 +154,8 @@ if ($selectedEventId) {
                 p.betrag
             FROM reservations r
             INNER JOIN users    u ON u.id = r.user_id
-            INNER JOIN seats    s ON s.id = r.seat_id
-            INNER JOIN tables   t ON t.id = s.table_id
+            LEFT  JOIN seats    s ON s.id = r.seat_id
+            LEFT  JOIN tables   t ON t.id = s.table_id
             LEFT  JOIN payments p ON p.reservation_id = r.id
             WHERE r.event_id = :event_id";
 
@@ -163,12 +163,20 @@ if ($selectedEventId) {
 
     // Suche nach Name oder Buchungsnummer
     if ($suche !== '') {
-        $sql .= " AND (u.vorname LIKE :suche
-                    OR u.nachname LIKE :suche
-                    OR CONCAT(u.vorname, ' ', u.nachname) LIKE :suche
-                    OR r.buchungsnummer LIKE :suche
-                    OR u.email LIKE :suche)";
-        $params['suche'] = '%' . $suche . '%';
+        // Mit PDO::ATTR_EMULATE_PREPARES=false (config.php) darf derselbe
+        // benannte Platzhalter nicht mehrfach im Query stehen – bislang
+        // crashte jede Sucheingabe hier mit "Invalid parameter number".
+        $sql .= " AND (u.vorname LIKE :suche1
+                    OR u.nachname LIKE :suche2
+                    OR CONCAT(u.vorname, ' ', u.nachname) LIKE :suche3
+                    OR r.buchungsnummer LIKE :suche4
+                    OR u.email LIKE :suche5)";
+        $sucheNeedle = '%' . $suche . '%';
+        $params['suche1'] = $sucheNeedle;
+        $params['suche2'] = $sucheNeedle;
+        $params['suche3'] = $sucheNeedle;
+        $params['suche4'] = $sucheNeedle;
+        $params['suche5'] = $sucheNeedle;
     }
 
     // Status-Filter
@@ -184,7 +192,9 @@ if ($selectedEventId) {
         }
     }
 
-    $sql .= " ORDER BY t.tischnummer ASC, s.sitzplatznummer ASC";
+    // Freiticket-Gäste (kein Tisch) ans Ende sortieren, statt durch NULL-first
+    // mitten in die Tischplan-Gäste zu geraten.
+    $sql .= " ORDER BY (t.tischnummer IS NULL) ASC, t.tischnummer ASC, s.sitzplatznummer ASC, r.erstellt_am ASC";
 
     $stmtG = $pdo->prepare($sql);
     $stmtG->execute($params);
@@ -395,11 +405,17 @@ include __DIR__ . '/../includes/navbar.php';
                             <small class="text-muted"><?= htmlspecialchars($g['email']) ?></small>
                         </td>
 
-                        <!-- Sitz: Tisch X Platz Y -->
+                        <!-- Sitz: Tisch X Platz Y (oder Freiticket) -->
                         <td class="text-nowrap">
+                            <?php if ($g['sitzplatznummer']): ?>
                             <i class="bi bi-grid me-1 text-muted"></i>
                             Tisch <strong><?= (int)$g['tischnummer'] ?></strong>
                             Platz <strong><?= (int)$g['sitzplatznummer'] ?></strong>
+                            <?php else: ?>
+                            <span class="badge bg-success">
+                                <i class="bi bi-ticket-perforated me-1"></i>Freiticket
+                            </span>
+                            <?php endif; ?>
                         </td>
 
                         <!-- Zahlungsart -->
@@ -487,6 +503,13 @@ include __DIR__ . '/../includes/navbar.php';
                             </span>
                             <?php endif; ?>
 
+                            <!-- QR anzeigen (verlorenes Ticket erneut zeigen) -->
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
+                                    data-reservation-id="<?= (int)$g['id'] ?>"
+                                    title="QR-Code anzeigen">
+                                <i class="bi bi-qr-code"></i>
+                            </button>
+
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -531,6 +554,23 @@ include __DIR__ . '/../includes/navbar.php';
 
 </main>
 
+<!-- ══ Ticket-QR-Modal (verlorenes Ticket erneut anzeigen) ══════════════════ -->
+<div class="modal fade" id="ticketModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="tm-gast">&nbsp;</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div id="tm-qr" class="mb-3 d-flex justify-content-center"></div>
+                <div id="tm-buchungsnr" class="font-monospace fw-bold fs-5 mb-2"></div>
+                <div id="tm-details" class="text-muted small"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php
 $extraScripts = <<<'HTML'
 <script>
@@ -560,6 +600,47 @@ $extraScripts = <<<'HTML'
             selectAll.indeterminate = allChecked.length > 0 && allChecked.length < allEnabled.length;
             selectAll.checked = allChecked.length === allEnabled.length && allEnabled.length > 0;
             updateBulk();
+        });
+    });
+})();
+
+// QR-Code-Anzeige für ein einzelnes Ticket (z.B. bei verlorenem Ticket)
+(function() {
+    var modalEl = document.getElementById('ticketModal');
+    if (!modalEl || !window.bootstrap) return;
+
+    document.querySelectorAll('[data-reservation-id]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            document.getElementById('tm-qr').innerHTML =
+                '<div class="spinner-border text-warning" role="status"></div>';
+            document.getElementById('tm-gast').textContent = 'Lade …';
+            document.getElementById('tm-buchungsnr').textContent = '';
+            document.getElementById('tm-details').textContent = '';
+            modal.show();
+
+            fetch('/api/ticket_qr.php?reservation_id=' + encodeURIComponent(btn.dataset.reservationId), {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                if (!res || !res.success) {
+                    document.getElementById('tm-gast').textContent = 'Nicht gefunden';
+                    document.getElementById('tm-details').textContent = (res && res.message) || 'Fehler.';
+                    return;
+                }
+                var d = res.data;
+                document.getElementById('tm-gast').textContent = d.gast;
+                document.getElementById('tm-qr').innerHTML = d.qr_html;
+                document.getElementById('tm-buchungsnr').textContent = d.buchungsnummer;
+                var zahlHinweis = d.zahl_status !== 'bezahlt' ? ' · Zahlung offen' : '';
+                document.getElementById('tm-details').textContent =
+                    d.event_name + ' · ' + d.event_datum + ' · ' + d.platz + zahlHinweis;
+            })
+            .catch(function() {
+                document.getElementById('tm-gast').textContent = 'Netzwerkfehler';
+            });
         });
     });
 })();

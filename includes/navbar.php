@@ -69,6 +69,9 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                         <li><a class="dropdown-item" href="/pages/kassierer_scan.php">
                             <i class="bi bi-qr-code-scan"></i> QR-Scanner
                         </a></li>
+                        <li><a class="dropdown-item" href="/pages/event_live_dashboard.php">
+                            <i class="bi bi-broadcast"></i> Live-Übersicht
+                        </a></li>
                     </ul>
                 </li>
                 <?php endif; ?>
