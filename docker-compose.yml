@@ -82,6 +82,12 @@ services:
       # Zugriff auf die Docker-Steuerung, um Container zu erneuern
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      # Das Watchtower-Image bringt intern noch Docker-API 1.25 mit. Aktuelle
+      # Docker-Versionen (u.a. auf Unraid) lehnen das ab ("client version 1.25
+      # is too old"), wodurch Watchtower in einer Neustart-Schleife hängt.
+      # Diese Zeile hebt die verwendete API-Version auf einen Stand an, den
+      # sowohl das Image als auch neuere Daemons unterstützen.
+      DOCKER_API_VERSION: ${DOCKER_API_VERSION:-1.41}
       # NUR beschriftete Container anfassen (siehe Label beim app-Service).
       # Ohne diesen Schalter würde Watchtower ALLE Container auf dem Unraid
       # aktualisieren – auch fremde Dienste und die Datenbank.

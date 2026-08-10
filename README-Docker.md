@@ -228,3 +228,11 @@ docker compose exec app php migrate.php --status   # Migrations-Status
   dass der Proxy `X-Forwarded-Proto: https` sendet.
 - **„Datenbank nicht erreichbar":** `DB_HOST` muss auf den DB-Container zeigen
   (bei Compose: `db`).
+- **Watchtower startet immer wieder neu**, im Log steht `client version 1.25 is
+  too old`: Das Watchtower-Image spricht eine zu alte Docker-API. Die Compose-
+  Datei setzt dagegen `DOCKER_API_VERSION` (Standard `1.41`). Meldet der Daemon
+  eine höhere Mindestversion, den Wert in der `.env` anheben:
+  ```ini
+  DOCKER_API_VERSION=1.44
+  ```
+  Danach `docker compose up -d watchtower`.
