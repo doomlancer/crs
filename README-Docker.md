@@ -236,3 +236,56 @@ docker compose exec app php migrate.php --status   # Migrations-Status
   DOCKER_API_VERSION=1.44
   ```
   Danach `docker compose up -d watchtower`.
+
+---
+
+## Sicherheit im Betrieb
+
+### Der Ticket-Signaturschlüssel
+
+Jeder QR-Code trägt eine HMAC-Signatur. Wer den Schlüssel kennt, kann beliebige
+Tickets erzeugen, die am Einlass akzeptiert werden — er ist damit so wertvoll
+wie die Kasse selbst.
+
+Der Schlüssel liegt in `/var/www/crs-secrets` im Container (Volume
+`app_secrets`), also **oberhalb** der DocumentRoot und nicht über HTTP
+erreichbar. Wer ihn stattdessen fest vorgeben will, trägt ihn in die `.env` ein:
+
+```ini
+TICKET_SECRET=<Ausgabe von: openssl rand -hex 32>
+```
+
+Ein bereits vorhandener Schlüssel aus einer älteren Installation
+(`uploads/.ticket_secret`) wird beim ersten Start automatisch übernommen und an
+der alten Stelle gelöscht. **Den Wert nie ändern, solange Tickets im Umlauf
+sind** — alle versendeten QR-Codes würden ungültig.
+
+Den aktuellen Schlüssel auslesen (z. B. um ihn in die `.env` zu übernehmen oder
+zu sichern):
+
+```bash
+docker compose exec app cat /var/www/crs-secrets/ticket_secret
+```
+
+### Datenbank-Migrationen
+
+Der Container führt beim Start alle ausstehenden Migrationen aus und startet
+nicht, wenn eine fehlschlägt. Nach einem Update also einfach:
+
+```bash
+docker compose up -d && docker compose logs app | tail -30
+```
+
+Beim Plesk-Weg ohne Container müssen die Migrationen nach jedem Update von Hand
+über `migrate_web.php` (als Admin angemeldet) eingespielt werden. Bleiben sie
+aus, fehlen Spalten, die die Anwendung erwartet — Anmeldungen schlagen dann
+fehl.
+
+### Erster Administrator
+
+Es gibt bewusst kein vorangelegtes Konto mit Standardpasswort. Der erste Admin
+entsteht aus `ADMIN_EMAIL`/`ADMIN_PASSWORD` beim ersten Start, oder manuell:
+
+```bash
+docker compose exec app php docker/create_admin.php
+```

@@ -43,8 +43,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Die Passwörter stimmen nicht überein.';
         } else {
             $pdo->beginTransaction();
-            $pdo->prepare('UPDATE users SET passwort = ?, login_versuche = 0, gesperrt_bis = NULL WHERE id = ?')
-                ->execute([hashPassword($passwort), $resetRow['user_id']]);
+            // passwort_geaendert_am entwertet alle offenen Sitzungen des Kontos.
+            // Genau das ist der Zweck eines Resets nach einer Kompromittierung.
+            $pdo->prepare(
+                'UPDATE users SET passwort = ?, login_versuche = 0, gesperrt_bis = NULL,
+                                  passwort_geaendert_am = ? WHERE id = ?'
+            )->execute([hashPassword($passwort), date('Y-m-d H:i:s'), $resetRow['user_id']]);
             $pdo->prepare('UPDATE password_resets SET used = 1 WHERE id = ?')
                 ->execute([$resetRow['id']]);
             $pdo->commit();

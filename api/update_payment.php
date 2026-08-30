@@ -72,8 +72,7 @@ try {
     }
 
     setFlash('success', "Zahlungsstatus für {$payment['vorname']} {$payment['nachname']} aktualisiert.");
-    $redirect = $_POST['redirect'] ?? '/pages/kassierer_guestlist.php';
-    redirect($redirect);
+    redirect(safeRedirectTarget($_POST['redirect'] ?? null, '/pages/kassierer_guestlist.php'));
 
 } catch (PDOException $e) {
     error_log('Payment Update Fehler: ' . $e->getMessage());

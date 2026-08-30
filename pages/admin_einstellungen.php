@@ -35,7 +35,8 @@ if (!settingsTableExists()) {
         ");
         redirect('/pages/admin_einstellungen.php');
     } catch (PDOException $e) {
-        setFlash('error', 'Tabelle konnte nicht erstellt werden: ' . $e->getMessage());
+        error_log('Settings-Tabelle konnte nicht erstellt werden: ' . $e->getMessage());
+        setFlash('error', 'Tabelle konnte nicht erstellt werden.');
         redirect('/pages/admin_dashboard.php');
     }
 }

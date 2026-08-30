@@ -13,6 +13,13 @@ ErrorDocument 404 /pages/error_404.php
     RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar|cgi|pl|asp|sh)$ - [F,L]
 </IfModule>
 
+# Versionsverwaltung sperren. <FilesMatch> greift nur auf Dateinamen, nicht auf
+# Pfade – ".git/config" fiele also durch jedes Muster unten. Beim Deployment per
+# "git pull" direkt in den Web-Root (Plesk/FTP-Weg) ließe sich sonst über
+# /.git/ die komplette Quellcode-Historie samt aller je committeten
+# Konfigurationen herunterladen.
+RedirectMatch 404 /\.git(/|$)
+
 # Sensible Dateien sperren
 <FilesMatch "\.(sql|log|env|ini|conf|bak)$">
     <IfModule mod_authz_core.c>
@@ -30,6 +37,13 @@ ErrorDocument 404 /pages/error_404.php
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-XSS-Protection "1; mode=block"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # HSTS nur auf echten HTTPS-Antworten. Über HTTP ignorieren Browser den
+    # Header ohnehin; die Bedingung verhindert zusätzlich, dass er beim reinen
+    # LAN-Betrieb (http://SERVER-IP:8080) je gesetzt wird. Läuft die App hinter
+    # einem Reverse-Proxy, der TLS terminiert, gehört der Header dorthin – der
+    # Container sieht die Verbindung dann als HTTP.
+    # Achtung: Einmal ausgeliefert, erzwingt max-age ein Jahr lang HTTPS.
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" "expr=%{HTTPS} == 'on'"
     # camera=(self): nötig für den QR-Scanner des Kassierers
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
     # Die Content-Security-Policy wird in config.php gesetzt (Nonce pro Request).

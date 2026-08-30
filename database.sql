@@ -120,11 +120,14 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================
--- Standard-Admin anlegen (Passwort: Admin1234!)
--- bcrypt hash für 'Admin1234!'
+-- Administrator anlegen
 -- =====================
-INSERT INTO `users` (`vorname`, `nachname`, `email`, `passwort`, `zahlungsart`, `rolle`, `aktiv`) VALUES
-('System', 'Administrator', 'admin@kameruner-tickets.de', '$2y$10$MLK6ddU2J9.YS.vgq.no7.crWbuBRwUZaTuf5JjQDS65yZmOjKnNy', 'bar', 'admin', 1);
+-- Hier wird bewusst KEIN Konto mit festem Passwort angelegt: ein im Repository
+-- dokumentiertes Standardpasswort ist öffentlich bekannt und damit wertlos als
+-- Schutz. Den ersten Admin stattdessen anlegen mit:
+--   docker compose exec app php docker/create_admin.php     (Docker)
+--   php docker/create_admin.php                             (CLI/Plesk)
+-- Das Skript liest das Passwort aus ADMIN_PASSWORD bzw. fragt es interaktiv ab.
 
 -- Beispiel-Event
 INSERT INTO `events` (`datum`, `name`, `beschreibung`, `max_gaeste`, `status`) VALUES

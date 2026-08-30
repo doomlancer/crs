@@ -108,8 +108,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (strlen($_POST['neues_passwort']) < 8) {
                     $errors[] = 'Neues Passwort muss mindestens 8 Zeichen lang sein.';
                 } else {
-                    $pwSet = ', passwort=?';
+                    // passwort_geaendert_am mitschreiben: setzt ein Admin das
+                    // Passwort zurück, müssen offene Sitzungen dieses Kontos
+                    // sofort ungültig werden (Prüfung in currentIdentity()).
+                    $pwSet = ', passwort=?, passwort_geaendert_am=?';
                     $params[] = hashPassword($_POST['neues_passwort']);
+                    $params[] = date('Y-m-d H:i:s');
                 }
             }
 

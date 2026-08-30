@@ -124,6 +124,87 @@ function getClientIP(): string {
     return '0.0.0.0';
 }
 
+/**
+ * Baut ein LIKE-Suchmuster und entschärft die Platzhalterzeichen der Eingabe.
+ *
+ * Ohne dieses Escaping wirkt eine Eingabe von "%" als "alles anzeigen": Aus dem
+ * Suchfeld der Ticket-Suche würde damit ein Knopf, der ohne Suchbegriff die
+ * Buchungen des Events ausgibt. Verschachtelte Muster wie "%a%a%a%a%" erzeugen
+ * außerdem teure Volltabellen-Scans auf ungeindizierten Textspalten.
+ */
+function likePattern(string $eingabe): string {
+    // Der Backslash ist in MySQL das Standard-Escape-Zeichen für LIKE.
+    return '%' . addcslashes($eingabe, '%_\\') . '%';
+}
+
+/**
+ * Prüft ein Weiterleitungsziel und lässt ausschließlich seiteninterne Pfade zu.
+ *
+ * Ein Ziel muss mit genau einem "/" beginnen. Sowohl "//fremde-domain" als auch
+ * "/\fremde-domain" sind protokollrelative Adressen und führen auf eine fremde
+ * Domain – Browser normalisieren den Backslash dabei zu einem Slash. Genau
+ * diese beiden Fälle hatten die bisherigen, jeweils eigenen Prüfungen in
+ * set_lang.php und checkin_gast.php übersehen; update_payment.php prüfte gar
+ * nicht. Deshalb steht die Logik jetzt an einer Stelle.
+ */
+function safeRedirectTarget(mixed $ziel, string $standard): string {
+    if (!is_string($ziel) || $ziel === '') {
+        return $standard;
+    }
+    if (str_contains($ziel, '..')) {
+        return $standard;
+    }
+    // Erlaubt sind Pfad, Query und übliche Sonderzeichen – keine Steuerzeichen
+    // (schützt zugleich vor Header-Injection) und kein zweites Trennzeichen
+    // direkt nach dem führenden Slash.
+    if (!preg_match('#^/(?![/\\\\])[A-Za-z0-9_\-/.?=&%]*$#', $ziel)) {
+        return $standard;
+    }
+    return $ziel;
+}
+
+// =====================
+// Rate-Limiting
+// =====================
+
+/**
+ * Vermerkt einen Versuch (fehlgeschlagener Login, Reset-Anforderung, …).
+ */
+function rateLimitHit(string $aktion, string $schluessel): void {
+    try {
+        $pdo = getDB();
+        $pdo->prepare('INSERT INTO rate_limits (aktion, schluessel) VALUES (?, ?)')
+            ->execute([$aktion, mb_substr($schluessel, 0, 190)]);
+        // Gelegentlich aufräumen, damit die Tabelle nicht unbegrenzt wächst.
+        if (random_int(1, 50) === 1) {
+            $pdo->exec('DELETE FROM rate_limits WHERE zeitpunkt < (NOW() - INTERVAL 1 DAY)');
+        }
+    } catch (Throwable $e) {
+        error_log('Rate-Limit konnte nicht geschrieben werden: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Prüft, ob für Aktion und Schlüssel im Zeitfenster zu viele Versuche liegen.
+ *
+ * Bei einem Datenbankfehler wird bewusst "nicht überschritten" gemeldet: eine
+ * Störung darf niemanden aussperren, und die übrigen Prüfungen greifen weiter.
+ */
+function rateLimitExceeded(string $aktion, string $schluessel, int $max, int $fensterSekunden): bool {
+    try {
+        $stmt = getDB()->prepare(
+            'SELECT COUNT(*) FROM rate_limits
+             WHERE aktion = ? AND schluessel = ?
+               AND zeitpunkt > (NOW() - INTERVAL ' . (int)$fensterSekunden . ' SECOND)'
+        );
+        $stmt->execute([$aktion, mb_substr($schluessel, 0, 190)]);
+        return (int)$stmt->fetchColumn() >= $max;
+    } catch (Throwable $e) {
+        error_log('Rate-Limit-Prüfung fehlgeschlagen: ' . $e->getMessage());
+        return false;
+    }
+}
+
 // =====================
 // Authentifizierungs-Funktionen
 // =====================
@@ -132,15 +213,78 @@ function getClientIP(): string {
  * Prüft ob der Benutzer eingeloggt ist
  */
 function isLoggedIn(): bool {
-    return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
+    return currentIdentity() !== null;
 }
 
 /**
  * Prüft ob der Benutzer eine bestimmte Rolle hat
  */
 function hasRole(string ...$roles): bool {
-    if (!isLoggedIn()) return false;
-    return in_array($_SESSION['rolle'] ?? '', $roles, true);
+    $user = currentIdentity();
+    return $user !== null && in_array($user['rolle'], $roles, true);
+}
+
+/**
+ * Lädt den angemeldeten Benutzer einmal pro Request aus der Datenbank.
+ *
+ * Rolle und Aktiv-Status stammten bisher ausschließlich aus der Session und
+ * damit aus dem Zustand zum Zeitpunkt des Logins. Wurde jemandem die
+ * Kassierer-Rolle entzogen, das Konto deaktiviert oder gelöscht, behielt eine
+ * offene Sitzung sämtliche Rechte, solange sie am Leben gehalten wurde – und
+ * das genügte, um weiterhin Gästelisten zu exportieren oder Check-ins
+ * vorzunehmen. Der Abgleich hier macht solche Änderungen sofort wirksam.
+ *
+ * Das Ergebnis wird für die Dauer des Requests zwischengespeichert, es
+ * entsteht also höchstens eine zusätzliche Abfrage pro Seitenaufruf.
+ */
+function currentIdentity(): ?array {
+    static $geladen = false;
+    static $user    = null;
+
+    if ($geladen) return $user;
+    $geladen = true;
+
+    if (empty($_SESSION['user_id'])) return null;
+
+    try {
+        $stmt = getDB()->prepare(
+            'SELECT id, vorname, nachname, email, zahlungsart, adresse, rolle, aktiv,
+                    passwort_geaendert_am
+             FROM users WHERE id = ?'
+        );
+        $stmt->execute([(int)$_SESSION['user_id']]);
+        $row = $stmt->fetch();
+    } catch (Throwable $e) {
+        // Datenbank nicht erreichbar: im Zweifel keine Rechte vergeben, die
+        // Sitzung aber auch nicht zerstören (sonst würde eine kurze Störung
+        // alle Nutzer abmelden).
+        error_log('Identitätsprüfung fehlgeschlagen: ' . $e->getMessage());
+        return null;
+    }
+
+    // Passwortwechsel entwertet alle anderen Sitzungen des Kontos. Genau darauf
+    // verlässt sich jemand, der nach einem Verdacht sein Passwort ändert.
+    // Sitzungen ohne gespeicherten Stand (aus der Zeit vor dieser Prüfung)
+    // werden nicht abgewiesen, sondern nachgezogen.
+    $pwEpocheAktuell = (string)($row['passwort_geaendert_am'] ?? '');
+    $pwEpocheSession = $_SESSION['pw_epoche'] ?? null;
+    $pwGeaendert     = $pwEpocheSession !== null && $pwEpocheSession !== $pwEpocheAktuell;
+
+    if (!$row || (int)$row['aktiv'] !== 1 || $pwGeaendert) {
+        // Konto gelöscht, deaktiviert oder Passwort geändert – Sitzung beenden.
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_destroy();
+        }
+        return null;
+    }
+
+    $_SESSION['pw_epoche'] = $pwEpocheAktuell;
+
+    // Rollenwechsel unmittelbar übernehmen.
+    $_SESSION['rolle'] = $row['rolle'];
+
+    return $user = $row;
 }
 
 /**
@@ -148,7 +292,11 @@ function hasRole(string ...$roles): bool {
  */
 function requireLogin(): void {
     if (!isLoggedIn()) {
-        $_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'];
+        // REQUEST_URI stammt aus der Anfrage und wird nach dem Login als
+        // Weiterleitungsziel verwendet – also hier schon einschränken.
+        $_SESSION['redirect_after_login'] = safeRedirectTarget(
+            $_SERVER['REQUEST_URI'] ?? null, '/pages/events.php'
+        );
         redirect('/pages/login.php');
     }
 }
@@ -166,18 +314,10 @@ function requireRole(string ...$roles): void {
 }
 
 /**
- * Aktuellen Benutzer aus der DB laden
+ * Aktuellen Benutzer aus der DB laden (Alias auf currentIdentity()).
  */
 function getCurrentUser(): ?array {
-    if (!isLoggedIn()) return null;
-    static $user = null;
-    if ($user === null) {
-        $pdo = getDB();
-        $stmt = $pdo->prepare('SELECT id, vorname, nachname, email, zahlungsart, adresse, rolle, aktiv FROM users WHERE id = ? AND aktiv = 1');
-        $stmt->execute([$_SESSION['user_id']]);
-        $user = $stmt->fetch() ?: null;
-    }
-    return $user;
+    return currentIdentity();
 }
 
 // =====================
@@ -956,7 +1096,7 @@ function findReservationsForLookup(string $query, ?int $eventId = null, int $lim
     // Mit PDO::ATTR_EMULATE_PREPARES=false (siehe config.php) darf derselbe
     // benannte Platzhalter nicht mehrfach im Query auftauchen – jede Stelle
     // braucht einen eigenen Namen, gebunden auf denselben Suchwert.
-    $needle = '%' . $query . '%';
+    $needle = likePattern($query);
     $params = ['q1' => $needle, 'q2' => $needle, 'q3' => $needle, 'q4' => $needle, 'q5' => $needle];
 
     if ($eventId !== null) {

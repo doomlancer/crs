@@ -52,10 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->beginTransaction();
         try {
             // Verfügbare Sitze sperren
+            // LIMIT als gebundener Parameter scheitert bei nicht emulierten
+            // Prepares; $newAnzahl ist bereits auf 1..20 begrenzt.
             $stmtSeats = $pdo->prepare(
-                'SELECT id FROM seats WHERE table_id = ? AND status = "verfuegbar" LIMIT ? FOR UPDATE'
+                'SELECT id FROM seats WHERE table_id = ? AND status = "verfuegbar"
+                 LIMIT ' . (int)$newAnzahl . ' FOR UPDATE'
             );
-            $stmtSeats->execute([$newTableId, $newAnzahl]);
+            $stmtSeats->execute([$newTableId]);
             $availSeats = $stmtSeats->fetchAll(PDO::FETCH_COLUMN);
 
             if (count($availSeats) < $newAnzahl) {

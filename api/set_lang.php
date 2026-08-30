@@ -9,9 +9,5 @@ require_once __DIR__ . '/../functions.php';
 $lang = $_GET['lang'] ?? 'de';
 setLang($lang);
 
-$redirect = $_GET['redirect'] ?? '/pages/events.php';
-// Nur relative Pfade erlauben (Open-Redirect-Schutz)
-if (!str_starts_with($redirect, '/') || str_starts_with($redirect, '//')) {
-    $redirect = '/pages/events.php';
-}
-redirect($redirect);
+// Nur seiteninterne Pfade erlauben (Open-Redirect-Schutz)
+redirect(safeRedirectTarget($_GET['redirect'] ?? null, '/pages/events.php'));

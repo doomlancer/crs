@@ -73,6 +73,13 @@ fi
 # ── 5) Rechte sicherstellen ────────────────────────────────────────────────
 chown -R www-data:www-data "${APP_DIR}/uploads" "${APP_DIR}/logs" 2>/dev/null || true
 
+# Schlüsselverzeichnis (liegt außerhalb der DocumentRoot). Beim ersten Start
+# gehört das frisch angelegte Volume root – ohne diesen Schritt könnte die App
+# den Ticket-Signaturschlüssel nicht ablegen.
+mkdir -p /var/www/crs-secrets 2>/dev/null || true
+chown -R www-data:www-data /var/www/crs-secrets 2>/dev/null || true
+chmod 700 /var/www/crs-secrets 2>/dev/null || true
+
 echo "✓ Bereit. Starte Apache."
 echo "──────────────────────────────────────────────"
 

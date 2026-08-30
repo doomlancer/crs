@@ -32,7 +32,22 @@ SetHandler none
     </IfModule>
 </FilesMatch>
 
-# 4) Alles hier wird als Download/Bild ausgeliefert, nie als HTML interpretiert
+# 4) Punktdateien niemals ausliefern. Hier landen keine Uploads (die bekommen
+#    serverseitig einen Namen), wohl aber versehentlich abgelegte Konfigurations-
+#    oder Schlüsseldateien. Ohne diese Regel greift keine der Sperren oben:
+#    "SetHandler none" würde eine solche Datei sogar garantiert als Rohtext
+#    ausliefern.
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 5) Alles hier wird als Download/Bild ausgeliefert, nie als HTML interpretiert
 <IfModule mod_headers.c>
     Header set X-Content-Type-Options "nosniff"
     Header set Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'; sandbox"

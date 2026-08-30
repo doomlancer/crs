@@ -33,7 +33,7 @@ if ($filterUser) {
 }
 if ($filterAktion) {
     $where[]  = 'a.aktion LIKE ?';
-    $params[] = '%' . $filterAktion . '%';
+    $params[] = likePattern($filterAktion);
 }
 if ($filterTabelle) {
     $where[]  = 'a.tabelle = ?';
@@ -49,9 +49,9 @@ if ($filterDatumBis) {
 }
 if ($search) {
     $where[]  = '(a.aktion LIKE ? OR a.aenderung LIKE ? OR u.email LIKE ?)';
-    $params[] = '%' . $search . '%';
-    $params[] = '%' . $search . '%';
-    $params[] = '%' . $search . '%';
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
 }
 
 $whereSQL = implode(' AND ', $where);
@@ -71,9 +71,9 @@ $stmt = $pdo->prepare(
      LEFT JOIN users u ON a.user_id = u.id
      WHERE {$whereSQL}
      ORDER BY a.zeitstempel DESC
-     LIMIT ? OFFSET ?"
+     LIMIT " . (int)$perPage . " OFFSET " . (int)$offset
 );
-$stmt->execute(array_merge($params, [$perPage, $offset]));
+$stmt->execute($params);
 $logs = $stmt->fetchAll();
 
 // Distinkte Tabellen für Filter

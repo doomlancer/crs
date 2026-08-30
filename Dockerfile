@@ -43,8 +43,12 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Schreibbare Verzeichnisse
-RUN mkdir -p /var/www/html/uploads /var/www/html/logs \
-    && chown -R www-data:www-data /var/www/html/uploads /var/www/html/logs
+# crs-secrets liegt bewusst NEBEN der DocumentRoot (/var/www/html), nicht darin:
+# dort legt die App den Signaturschlüssel der Ticket-QR-Codes ab, der niemals
+# über HTTP erreichbar sein darf. Persistenz kommt über das Volume app_secrets.
+RUN mkdir -p /var/www/html/uploads /var/www/html/logs /var/www/crs-secrets \
+    && chown -R www-data:www-data /var/www/html/uploads /var/www/html/logs /var/www/crs-secrets \
+    && chmod 700 /var/www/crs-secrets
 
 EXPOSE 80
 

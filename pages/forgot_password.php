@@ -21,7 +21,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = strtolower(trim($_POST['email'] ?? ''));
         if (!validateEmail($email)) {
             $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
+        } elseif (rateLimitExceeded('pwreset_ip', getClientIP(), 5, 3600)
+               || rateLimitExceeded('pwreset_mail', $email, 3, 3600)) {
+            // Ohne Drosselung ließen sich beliebig viele Reset-Mails an ein
+            // fremdes Postfach auslösen – und weil jede Anfrage den zuvor
+            // verschickten Link entwertet, käme das Opfer nie zum Zurücksetzen.
+            // Die Meldung bleibt dieselbe wie im Erfolgsfall, damit sie nicht
+            // verrät, ob die Adresse überhaupt registriert ist.
+            $success = true;
         } else {
+            rateLimitHit('pwreset_ip', getClientIP());
+            rateLimitHit('pwreset_mail', $email);
+
             $pdo  = getDB();
             $stmt = $pdo->prepare('SELECT id, vorname FROM users WHERE email = ? AND aktiv = 1');
             $stmt->execute([$email]);

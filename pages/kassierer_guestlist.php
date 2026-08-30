@@ -171,7 +171,7 @@ if ($selectedEventId) {
                     OR CONCAT(u.vorname, ' ', u.nachname) LIKE :suche3
                     OR r.buchungsnummer LIKE :suche4
                     OR u.email LIKE :suche5)";
-        $sucheNeedle = '%' . $suche . '%';
+        $sucheNeedle = likePattern($suche);
         $params['suche1'] = $sucheNeedle;
         $params['suche2'] = $sucheNeedle;
         $params['suche3'] = $sucheNeedle;

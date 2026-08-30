@@ -4,6 +4,15 @@
  * Variablen $selectedEvent, $pdo, $userId sind bereits gesetzt.
  */
 
+// Diese Datei ist ein Fragment, liegt aber im Web-Root und wäre direkt
+// aufrufbar. Ohne die eingebundenen Variablen liefe sie in einen Fatal Error
+// auf undefinierten Werten – kein Datenabfluss, aber ein unnötiger
+// Einstiegspunkt, der bei aktiviertem Debug-Modus Pfade preisgäbe.
+if (!isset($selectedEvent, $pdo, $userId)) {
+    http_response_code(404);
+    exit;
+}
+
 // Veranstaltungsinfo mit Preis + Auslastung laden
 $evId = (int)$selectedEvent['id'];
 try {

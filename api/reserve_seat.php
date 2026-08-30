@@ -41,10 +41,17 @@ if ($action === 'reserve_free_ticket') {
         $pdo->beginTransaction();
 
         // Event laden und prüfen
+        // FOR UPDATE sperrt die Event-Zeile für die Dauer der Transaktion.
+        // Die Kontingentprüfung weiter unten ist sonst wirkungslos: Ein reiner
+        // SELECT COUNT(*) liest unter InnoDB den Snapshot vom Transaktionsbeginn,
+        // sodass gleichzeitige Buchungen alle denselben Stand sehen, alle die
+        // Prüfung bestehen und das Kontingent gemeinsam überschreiten. Anders als
+        // beim Sitzplan gibt es hier kein Netz darunter – Freitickets haben
+        // seat_id NULL und fallen damit nicht unter den Eindeutigkeitsschlüssel.
         if (hasRole('admin')) {
-            $stmtEv = $pdo->prepare("SELECT id, name, datum, event_typ, max_gaeste, preis, status FROM events WHERE id = ? AND status != 'abgerechnet'");
+            $stmtEv = $pdo->prepare("SELECT id, name, datum, event_typ, max_gaeste, preis, status FROM events WHERE id = ? AND status != 'abgerechnet' FOR UPDATE");
         } else {
-            $stmtEv = $pdo->prepare("SELECT id, name, datum, event_typ, max_gaeste, preis, status FROM events WHERE id = ? AND status = 'aktiv'");
+            $stmtEv = $pdo->prepare("SELECT id, name, datum, event_typ, max_gaeste, preis, status FROM events WHERE id = ? AND status = 'aktiv' FOR UPDATE");
         }
         $stmtEv->execute([$eventId]);
         $event = $stmtEv->fetch();
@@ -211,10 +218,15 @@ if ($action === 'reserve_auto') {
             }
 
             // Verfügbare Sitze sperren
+            // LIMIT verträgt keinen gebundenen Parameter, solange PDO die
+            // Prepares nicht emuliert (config.php setzt EMULATE_PREPARES=false):
+            // MySQL bekäme dort eine Zeichenkette und bricht ab. $anzahl ist
+            // oben bereits auf 1..10 begrenzt, die Einsetzung ist also sicher.
             $stmtAvail = $pdo->prepare(
-                'SELECT id FROM seats WHERE table_id = ? AND status = "verfuegbar" LIMIT ? FOR UPDATE'
+                'SELECT id FROM seats WHERE table_id = ? AND status = "verfuegbar"
+                 LIMIT ' . (int)$anzahl . ' FOR UPDATE'
             );
-            $stmtAvail->execute([$tableId, $anzahl]);
+            $stmtAvail->execute([$tableId]);
             $availSeats = $stmtAvail->fetchAll(PDO::FETCH_COLUMN);
 
             if (count($availSeats) < $anzahl) {

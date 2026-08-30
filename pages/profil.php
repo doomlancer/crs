@@ -145,9 +145,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             } elseif ($altesPasswort === $neuesPasswort) {
                 $pwErrors[] = 'Das neue Passwort darf nicht identisch mit dem aktuellen Passwort sein.';
             } else {
-                $neuerHash = password_hash($neuesPasswort, PASSWORD_BCRYPT, ['cost' => 12]);
-                $pdo->prepare('UPDATE users SET passwort = ? WHERE id = ?')
-                    ->execute([$neuerHash, $userId]);
+                $neuerHash  = password_hash($neuesPasswort, PASSWORD_BCRYPT, ['cost' => 12]);
+                $pwZeitpunkt = date('Y-m-d H:i:s');
+                $pdo->prepare('UPDATE users SET passwort = ?, passwort_geaendert_am = ? WHERE id = ?')
+                    ->execute([$neuerHash, $pwZeitpunkt, $userId]);
+
+                // Alle übrigen Sitzungen dieses Kontos verlieren damit ihre
+                // Gültigkeit (Prüfung in currentIdentity()). Die eigene, gerade
+                // benutzte Sitzung wird bewusst weitergeführt – mit neuer ID.
+                session_regenerate_id(true);
+                $_SESSION['pw_epoche'] = $pwZeitpunkt;
 
                 logAudit('PASSWORT_GEAENDERT', 'users', $userId, 'Passwort selbst geändert');
 

@@ -276,7 +276,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 setFlash('success', "Reservierung {$buchungsnummer} erfolgreich erstellt.");
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                setFlash('error', 'Fehler beim Erstellen der Reservierung: ' . $e->getMessage());
+                // Details ins Log, nicht in den Browser: die PDO-Meldung nennt
+                // Tabellen-, Spalten- und Constraint-Namen.
+                error_log('Reservierung anlegen fehlgeschlagen: ' . $e->getMessage());
+                setFlash('error', 'Fehler beim Erstellen der Reservierung.');
             }
         } else {
             setFlash('error', implode(' ', $errors));

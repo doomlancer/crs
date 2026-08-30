@@ -79,13 +79,27 @@ if ($format === 'csv') {
         'Reserviert am',
     ], ';');
 
+    /**
+     * Entschärft Zellen, die Excel oder LibreOffice als Formel auswerten würden.
+     *
+     * Vor- und Nachname stammen unverändert aus der Registrierung. Ein Gast,
+     * der sich als "=cmd|'/c ...'!A1" oder "=HYPERLINK(...)" einträgt, würde
+     * sonst beim Öffnen der Exportdatei Code auf dem Rechner des Kassierers
+     * ausführen bzw. Daten an eine fremde Adresse schicken. Das führende
+     * Apostroph zwingt die Tabellenkalkulation, den Wert als Text zu behandeln.
+     */
+    $csvSafe = static function ($wert): string {
+        $wert = (string)$wert;
+        return ($wert !== '' && str_contains("=+-@\t\r", $wert[0])) ? "'" . $wert : $wert;
+    };
+
     foreach ($gaeste as $gast) {
         fputcsv($output, [
-            $gast['buchungsnummer'],
-            $gast['vorname'],
-            $gast['nachname'],
-            $gast['email'],
-            $gast['adresse'] ?? '',
+            $csvSafe($gast['buchungsnummer']),
+            $csvSafe($gast['vorname']),
+            $csvSafe($gast['nachname']),
+            $csvSafe($gast['email']),
+            $csvSafe($gast['adresse'] ?? ''),
             $gast['tischnummer'],
             $gast['sitzplatznummer'],
             zahlungsartLabel($gast['zahlungsart'] ?? ''),

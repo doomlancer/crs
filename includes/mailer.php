@@ -8,6 +8,16 @@
  * Kern-Funktion: sendet eine HTML-E-Mail mit Plaintext-Fallback
  */
 function sendMail(string $to, string $toName, string $subject, string $htmlBody, string $textBody): bool {
+    // Betreff und Anzeigename sind durch die Base64-Kodierung unten bereits
+    // gegen Header-Injection geschützt, die Empfängeradresse dagegen wird roh
+    // interpoliert. Alle heutigen Aufrufer liefern geprüfte Adressen – diese
+    // Absicherung stellt sicher, dass das auch bei künftigen so bleibt.
+    $to = str_replace(["\r", "\n", "\0"], '', trim($to));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        error_log('sendMail: ungültige Empfängeradresse abgewiesen');
+        return false;
+    }
+
     $from     = $_ENV['SMTP_USER'] ?? 'noreply@localhost';
     $fromName = $_ENV['SMTP_FROM_NAME'] ?? APP_NAME;
     $boundary = '----=_Part_' . md5(uniqid((string)time(), true));

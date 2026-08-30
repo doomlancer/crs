@@ -25,6 +25,7 @@ foreach ([
     'DB_HOST','DB_NAME','DB_USER','DB_PASS','DEBUG_MODE','APP_NAME','APP_URL',
     'TICKET_PREIS','FORCE_HTTPS','PAYPAL_EMAIL','PAYPAL_SANDBOX',
     'SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_FROM_NAME',
+    'TICKET_SECRET','TICKET_SECRET_DIR',
 ] as $__k) {
     $__v = getenv($__k);
     if ($__v !== false && !isset($_ENV[$__k])) {
@@ -167,32 +168,64 @@ function withCspNonce(string $html): string {
     return preg_replace('/<script(?![^>]*\bnonce=)/i', '<script nonce="' . CSP_NONCE . '"', $html);
 }
 
-define('PAYPAL_EMAIL',   $_ENV['PAYPAL_EMAIL']   ?? 'marc.gunit@gmail.com');
+// Kein Vorgabewert: Ein fest einkompiliertes Empfängerkonto würde Zahlungen
+// stillschweigend auf ein fremdes Konto leiten, wenn die Konfiguration fehlt.
+// Ist der Wert leer, prüft api/paypal_ipn.php gar nicht erst weiter.
+define('PAYPAL_EMAIL',   $_ENV['PAYPAL_EMAIL']   ?? '');
 define('PAYPAL_SANDBOX', (bool)($_ENV['PAYPAL_SANDBOX'] ?? false));
 
 // ─────────────────────────────────────────────────────────────────────────
 // Geheimnis zum Signieren der Ticket-QR-Codes (HMAC).
 // Ohne gültige Signatur wird ein Ticket beim Check-in abgelehnt – damit sind
 // erfundene oder abgeänderte Buchungsnummern wertlos.
-// Wird kein Wert vorgegeben, erzeugt die App einmalig einen und legt ihn
-// unter uploads/.ticket_secret ab (außerhalb des Web-Zugriffs gesperrt).
+//
+// Vorrang hat TICKET_SECRET aus der Umgebung (empfohlen, siehe .env.example).
+// Fehlt der Wert, legt die App den Schlüssel in einem Verzeichnis OBERHALB der
+// DocumentRoot ab. Er darf NICHT unter uploads/ liegen: dieses Verzeichnis
+// wird vom Webserver ausgeliefert, ein dort abgelegter Schlüssel wäre per HTTP
+// abrufbar – und wer ihn kennt, kann beliebige Tickets fälschen.
+//
+// Ein an der alten Stelle vorhandener Schlüssel wird übernommen und dort
+// gelöscht. Er darf nicht einfach neu erzeugt werden, sonst würden alle
+// bereits versendeten QR-Codes ungültig.
 // ─────────────────────────────────────────────────────────────────────────
 if (!empty($_ENV['TICKET_SECRET'])) {
     define('TICKET_SECRET', $_ENV['TICKET_SECRET']);
 } else {
-    $__secretFile = __DIR__ . '/uploads/.ticket_secret';
+    $__secretDir  = $_ENV['TICKET_SECRET_DIR'] ?? dirname(__DIR__) . '/crs-secrets';
+    $__secretFile = $__secretDir . '/ticket_secret';
+    $__legacyFile = __DIR__ . '/uploads/.ticket_secret';
+    $__secret     = '';
+
     if (is_readable($__secretFile)) {
-        define('TICKET_SECRET', trim((string)file_get_contents($__secretFile)));
-    } else {
-        $__generated = bin2hex(random_bytes(32));
-        if (!is_dir(__DIR__ . '/uploads')) {
-            @mkdir(__DIR__ . '/uploads', 0755, true);
-        }
-        if (@file_put_contents($__secretFile, $__generated) !== false) {
-            @chmod($__secretFile, 0600);
-        }
-        define('TICKET_SECRET', $__generated);
-        unset($__generated);
+        $__secret = trim((string)file_get_contents($__secretFile));
     }
-    unset($__secretFile);
+    if ($__secret === '' && is_readable($__legacyFile)) {
+        $__secret = trim((string)file_get_contents($__legacyFile));   // Altbestand
+    }
+    if ($__secret === '') {
+        $__secret = bin2hex(random_bytes(32));
+    }
+
+    // An den geschützten Ort schreiben und die exponierte Kopie entfernen.
+    if (!is_readable($__secretFile)) {
+        if (!is_dir($__secretDir)) {
+            @mkdir($__secretDir, 0700, true);
+        }
+        if (@file_put_contents($__secretFile, $__secret) !== false) {
+            @chmod($__secretFile, 0600);
+            @unlink($__legacyFile);
+        } elseif (!is_readable($__legacyFile)) {
+            // Letzter Ausweg: Der Schlüssel muss dauerhaft ablegbar sein, sonst
+            // entstünde bei jedem Request ein neuer und kein Ticket wäre mehr
+            // einlösbar. uploads/ ist per .htaccess gegen Punktdateien gesperrt.
+            @file_put_contents($__legacyFile, $__secret);
+            @chmod($__legacyFile, 0600);
+            error_log('CRS: Ticket-Schlüssel konnte nicht in ' . $__secretDir
+                . ' abgelegt werden. Bitte TICKET_SECRET als Umgebungsvariable setzen.');
+        }
+    }
+
+    define('TICKET_SECRET', $__secret);
+    unset($__secretDir, $__secretFile, $__legacyFile, $__secret);
 }

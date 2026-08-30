@@ -133,6 +133,8 @@ INSERT IGNORE INTO `migrations` (`dateiname`) VALUES
 ('002_password_resets.sql'),
 ('003_waitlist.sql');
 
--- Standard-Admin (Passwort: Admin1234! – bitte sofort ändern!)
-INSERT IGNORE INTO `users` (`vorname`, `nachname`, `email`, `passwort`, `zahlungsart`, `rolle`, `aktiv`) VALUES
-('System', 'Administrator', 'admin@karneval.local', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'bar', 'admin', 1);
+-- Administrator anlegen:
+-- Bewusst kein Konto mit festem Passwort — ein im Repository dokumentiertes
+-- Standardpasswort ist öffentlich bekannt. Den ersten Admin nach dem Einspielen
+-- dieser Datei anlegen mit:  php docker/create_admin.php
+-- (liest ADMIN_PASSWORD aus der Umgebung oder fragt interaktiv nach).

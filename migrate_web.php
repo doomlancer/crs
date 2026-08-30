@@ -61,10 +61,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && validateCsrfToken($_POST['csrf_toke
         }
 
         if ($fehler) {
-            $messages[] = ['type' => 'danger', 'text' => "❌ <strong>{$name}</strong>: {$fehler}"];
+            // Die Meldungen werden weiter unten als HTML ausgegeben; Datenbank-
+            // und Dateinamen gehören daher escaped.
+            $messages[] = ['type' => 'danger', 'text' => '❌ <strong>'
+                . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</strong>: '
+                . htmlspecialchars($fehler, ENT_QUOTES, 'UTF-8')];
         } else {
             $pdo->prepare('INSERT IGNORE INTO migrations (dateiname) VALUES (?)')->execute([$name]);
-            $messages[] = ['type' => 'success', 'text' => "✓ <strong>{$name}</strong> erfolgreich ausgeführt."];
+            $messages[] = ['type' => 'success', 'text' => '✓ <strong>'
+                . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</strong> erfolgreich ausgeführt.'];
         }
     }
 

@@ -29,11 +29,9 @@ function checkinRespond(bool $ok, string $message, array $data = [], int $status
     setFlash($ok ? 'success' : 'error', $message);
 
     // Offene Weiterleitungen verhindern: nur seiteninterne Pfade zulassen.
-    $target = $_POST['redirect'] ?? '/pages/kassierer_dashboard.php';
-    if (!is_string($target) || !preg_match('#^/[A-Za-z0-9_\-/\.]*$#', $target) || str_contains($target, '..')) {
-        $target = '/pages/kassierer_dashboard.php';
-    }
-    redirect($target);
+    // Das frühere Muster ließ "//fremde-domain" durch – der führende Slash
+    // passte, der zweite fiel in die Zeichenklasse.
+    redirect(safeRedirectTarget($_POST['redirect'] ?? null, '/pages/kassierer_dashboard.php'));
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

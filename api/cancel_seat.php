@@ -54,8 +54,11 @@ if (!$res) {
     redirect($redirectUrl);
 }
 
-// Nur eigene Reservierungen stornieren (außer Admin/Kassierer)
-if ((int)$res['user_id'] !== $userId && !hasRole('admin', 'kassierer')) {
+// Fremde Reservierungen darf nur ein Admin stornieren. Kassierer sind für
+// Check-in, Zahlungsstatus und Gästelisten zuständig – mit dem früheren
+// Zugriff hier hätte ein einzelnes Kassierer-Konto die komplette Buchungs-
+// und Zahlungshistorie einer Veranstaltung ausräumen können.
+if ((int)$res['user_id'] !== $userId && !hasRole('admin')) {
     setFlash('error', 'Sie dürfen diese Reservierung nicht stornieren.');
     redirect($redirectUrl);
 }
@@ -72,13 +75,16 @@ try {
     // Sitz freigeben
     $pdo->prepare('UPDATE seats SET status = "verfuegbar" WHERE id = ?')->execute([$res['seat_id']]);
 
-    // Zahlung löschen
+    // Zahlung und Reservierung stornieren statt löschen: der Datensatz bleibt
+    // für Abrechnung und Nachvollziehbarkeit erhalten. Der Sitzplatz wird
+    // trotzdem wieder buchbar – dafür sorgt der Teilindex uq_seat_aktiv aus
+    // Migration 009, der stornierte Zeilen nicht mehr mitzählt.
     if ($res['payment_id']) {
-        $pdo->prepare('DELETE FROM payments WHERE id = ?')->execute([$res['payment_id']]);
+        $pdo->prepare('UPDATE payments SET status = "storniert" WHERE id = ?')
+            ->execute([$res['payment_id']]);
     }
-
-    // Reservierung löschen
-    $pdo->prepare('DELETE FROM reservations WHERE id = ?')->execute([$reservationId]);
+    $pdo->prepare('UPDATE reservations SET status = "abgerechnet" WHERE id = ?')
+        ->execute([$reservationId]);
 
     $pdo->commit();
 
@@ -103,39 +109,41 @@ logAudit(
     ])
 );
 
-// Storno-Mail an Gast
+// Ab hier ist die Stornierung bereits festgeschrieben. Alles Folgende darf den
+// Ablauf nicht mehr abbrechen – deshalb Throwable statt Exception: ein Tippfehler
+// im Mailversand ist ein Error, kein Exception, und hätte den Redirect samt
+// Rückmeldung an den Gast verschluckt.
 try {
-    sendMail(
+    sendStornierungsbestaetigung(
         $res['user_email'],
-        'Stornierungsbestätigung – ' . $res['event_name'],
-        'storno_bestaetigung',
-        [
-            'vorname'        => $res['vorname'],
-            'buchungsnummer' => $res['buchungsnummer'],
-            'event_name'     => $res['event_name'],
-            'event_datum'    => formatDatum($res['event_datum']),
-            'betrag'         => formatBetrag((float)$res['preis']),
-        ]
+        $res['vorname'],
+        $res['buchungsnummer'],
+        $res['event_name']
     );
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log('Storno-Mail Fehler: ' . $e->getMessage());
 }
 
-// Admin/Kassierer informieren
-notifyAdminStorno(
-    [
-        'buchungsnummer' => $res['buchungsnummer'],
-        'gast_name'      => $res['vorname'],
-        'gast_email'     => $res['user_email'],
-        'event_name'     => $res['event_name'],
-        'event_datum'    => formatDatum($res['event_datum']),
-        'betrag'         => $res['preis'],
-    ],
-    ($_SESSION['vorname'] ?? '') . ' (' . ($_SESSION['email'] ?? '') . ')'
-);
-
-// Warteliste benachrichtigen
-notifyNextWaitingUser((int)$res['event_id']);
+// Warteliste: ältesten Eintrag für dieses Event benachrichtigen
+try {
+    $stmtWl = $pdo->prepare(
+        'SELECT u.email, u.vorname FROM waitlist w
+         JOIN users u ON w.user_id = u.id
+         WHERE w.event_id = ? ORDER BY w.erstellt_am ASC LIMIT 1'
+    );
+    $stmtWl->execute([(int)$res['event_id']]);
+    $nextUser = $stmtWl->fetch();
+    if ($nextUser) {
+        sendWaitlistNotification(
+            $nextUser['email'],
+            $nextUser['vorname'],
+            $res['event_name'],
+            APP_URL . '/pages/tischplan.php?event_id=' . (int)$res['event_id']
+        );
+    }
+} catch (Throwable $e) {
+    error_log('Wartelisten-Benachrichtigung fehlgeschlagen: ' . $e->getMessage());
+}
 
 setFlash('success', 'Reservierung ' . htmlspecialchars($res['buchungsnummer']) . ' wurde erfolgreich storniert.');
 redirect($redirectUrl);

@@ -13,47 +13,73 @@ require_once __DIR__ . '/../functions.php';
  * Benutzer einloggen
  * Gibt true bei Erfolg zurück, sonst Fehlermeldung
  */
-function loginUser(string $email, string $passwort): bool|string {
-    $pdo = getDB();
+/**
+ * Bcrypt-Hash eines Zufallswerts, gegen den kein Passwort verifiziert.
+ * Wird für unbekannte E-Mail-Adressen geprüft, damit die Antwortzeit nicht
+ * verrät, ob ein Konto existiert (siehe Kommentar in loginUser()).
+ */
+const DUMMY_PASSWORT_HASH = '$2y$12$YYxbEGqnIcxNMfW0yXJgv.ZVczkYCvymeRkMXlPTbpK3Rlqnun7CS';
 
-    // Benutzer anhand der E-Mail suchen
+function loginUser(string $email, string $passwort): bool|string {
+    $pdo   = getDB();
+    $email = strtolower(trim($email));
+    $ip    = getClientIP();
+
+    // Kontounabhängige Bremse. Der Zähler in users.login_versuche greift nur je
+    // Konto – wer je Konto nur einen Versuch macht (Password-Spraying), löst ihn
+    // nie aus. Diese Sperre zählt stattdessen pro Herkunftsadresse.
+    if (rateLimitExceeded('login', $ip, 15, 900)) {
+        return 'Zu viele Anmeldeversuche. Bitte in einigen Minuten erneut versuchen.';
+    }
+
     $stmt = $pdo->prepare(
-        'SELECT id, vorname, nachname, email, passwort, rolle, aktiv, login_versuche, gesperrt_bis
+        'SELECT id, vorname, nachname, email, passwort, rolle, aktiv,
+                login_versuche, gesperrt_bis, passwort_geaendert_am
          FROM users WHERE email = ?'
     );
-    $stmt->execute([strtolower(trim($email))]);
+    $stmt->execute([$email]);
     $user = $stmt->fetch();
 
-    if (!$user) {
+    // Die Passwortprüfung läuft IMMER, auch für unbekannte Adressen. Sonst
+    // verrät schon die Antwortzeit, ob ein Konto existiert: bcrypt mit
+    // Kostenfaktor 12 braucht rund 250 ms, ein erfolgloser SELECT keine 2 ms.
+    // Eine neutrale Fehlermeldung allein nützt gegen dieses Orakel nichts.
+    $passwortKorrekt = verifyPassword($passwort, $user['passwort'] ?? DUMMY_PASSWORT_HASH);
+
+    if (!$user || !$passwortKorrekt) {
+        rateLimitHit('login', $ip);
+
+        if ($user) {
+            $versuche = (int)$user['login_versuche'] + 1;
+            // Abgelaufene Sperre setzt den Zähler zurück. Ohne das bliebe er
+            // nach der ersten Sperre dauerhaft am Anschlag, und ein Angreifer
+            // könnte das Konto mit einem Request alle 15 Minuten permanent
+            // gesperrt halten.
+            if (!empty($user['gesperrt_bis']) && strtotime($user['gesperrt_bis']) <= time()) {
+                $versuche = 1;
+            }
+            if ($versuche >= MAX_LOGIN_VERSUCHE) {
+                $pdo->prepare('UPDATE users SET login_versuche = ?, gesperrt_bis = ? WHERE id = ?')
+                    ->execute([$versuche, date('Y-m-d H:i:s', time() + LOGIN_SPERRZEIT), $user['id']]);
+            } else {
+                $pdo->prepare('UPDATE users SET login_versuche = ? WHERE id = ?')
+                    ->execute([$versuche, $user['id']]);
+            }
+        }
+
+        // Eine einzige Meldung für alle Fehlerfälle – kein Hinweis darauf, ob
+        // die Adresse registriert, gesperrt oder deaktiviert ist.
         return 'Ungültige E-Mail oder Passwort.';
     }
 
-    // Konto gesperrt?
+    // Ab hier ist das Passwort korrekt. Wer es kennt, weiß ohnehin, dass es das
+    // Konto gibt – konkrete Hinweise verraten jetzt nichts mehr.
     if (!empty($user['gesperrt_bis']) && strtotime($user['gesperrt_bis']) > time()) {
-        $minuten = ceil((strtotime($user['gesperrt_bis']) - time()) / 60);
-        return "Konto gesperrt. Bitte warten Sie noch {$minuten} Minute(n).";
+        $minuten = (int)ceil((strtotime($user['gesperrt_bis']) - time()) / 60);
+        return "Konto vorübergehend gesperrt. Bitte warten Sie noch {$minuten} Minute(n).";
     }
-
-    // Konto deaktiviert?
     if (!$user['aktiv']) {
         return 'Dieses Konto wurde deaktiviert. Bitte kontaktieren Sie den Administrator.';
-    }
-
-    // Passwort prüfen
-    if (!verifyPassword($passwort, $user['passwort'])) {
-        // Fehlversuche hochzählen
-        $versuche = $user['login_versuche'] + 1;
-        if ($versuche >= MAX_LOGIN_VERSUCHE) {
-            $gesperrt_bis = date('Y-m-d H:i:s', time() + LOGIN_SPERRZEIT);
-            $pdo->prepare('UPDATE users SET login_versuche = ?, gesperrt_bis = ? WHERE id = ?')
-                ->execute([$versuche, $gesperrt_bis, $user['id']]);
-            $minuten = LOGIN_SPERRZEIT / 60;
-            return "Zu viele Fehlversuche. Konto für {$minuten} Minuten gesperrt.";
-        }
-        $verbleibend = MAX_LOGIN_VERSUCHE - $versuche;
-        $pdo->prepare('UPDATE users SET login_versuche = ? WHERE id = ?')
-            ->execute([$versuche, $user['id']]);
-        return "Ungültige E-Mail oder Passwort. Noch {$verbleibend} Versuch(e) übrig.";
     }
 
     // Erfolgreich: Fehlversuche zurücksetzen, Session setzen
@@ -63,11 +89,14 @@ function loginUser(string $email, string $passwort): bool|string {
     // Session-ID erneuern (Session Fixation verhindern)
     session_regenerate_id(true);
 
-    $_SESSION['user_id']  = $user['id'];
-    $_SESSION['vorname']  = $user['vorname'];
-    $_SESSION['nachname'] = $user['nachname'];
-    $_SESSION['email']    = $user['email'];
-    $_SESSION['rolle']    = $user['rolle'];
+    $_SESSION['user_id']   = $user['id'];
+    $_SESSION['vorname']   = $user['vorname'];
+    $_SESSION['nachname']  = $user['nachname'];
+    $_SESSION['email']     = $user['email'];
+    $_SESSION['rolle']     = $user['rolle'];
+    // Stand des Passworts. Ändert es sich, werden alle anderen offenen
+    // Sitzungen dieses Kontos beim nächsten Request verworfen.
+    $_SESSION['pw_epoche'] = (string)($user['passwort_geaendert_am'] ?? '');
 
     logAudit('LOGIN', 'users', $user['id'], 'Erfolgreicher Login');
 

@@ -45,9 +45,17 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-on}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Kameruner-Tickets}
+      # ── Signaturschlüssel der Ticket-QR-Codes ──
+      # Leer lassen ist möglich – dann legt die App den Schlüssel selbst im
+      # Volume app_secrets ab (oberhalb der DocumentRoot, nicht per HTTP
+      # erreichbar). Wer den Schlüssel kennt, kann Tickets fälschen.
+      TICKET_SECRET: ${TICKET_SECRET:-}
     volumes:
       - app_uploads:/var/www/html/uploads
       - app_logs:/var/www/html/logs
+      # Liegt bewusst NICHT unter /var/www/html – dieses Verzeichnis liefert
+      # Apache aus.
+      - app_secrets:/var/www/crs-secrets
 
   db:
     image: mariadb:10.11
@@ -109,4 +117,5 @@ services:
 volumes:
   app_uploads:
   app_logs:
+  app_secrets:
   db_data:
