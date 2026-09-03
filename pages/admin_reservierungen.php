@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($res) {
                 $pdo->beginTransaction();
                 try {
-                    $pdo->prepare('UPDATE reservations SET status = "abgerechnet" WHERE id = ?')
+                    $pdo->prepare('UPDATE reservations SET status = "storniert" WHERE id = ?')
                         ->execute([$reservationId]);
                     $pdo->prepare('UPDATE seats SET status = "verfuegbar" WHERE id = ?')
                         ->execute([$res['seat_id']]);
@@ -205,7 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $filterEvent  = (int)($_GET['event_id'] ?? 0);
 $filterStatus = in_array($_GET['status'] ?? '', ['', 'geplant', 'eingecheckt', 'abgerechnet'])
                 ? ($_GET['status'] ?? '') : '';
-$search       = sanitize($_GET['search'] ?? '');
+$search       = trim($_GET['search'] ?? '');
 
 // Alle Events für Filter + Neue-Reservierung-Modal
 $alleEvents = $pdo->query(
@@ -237,10 +237,10 @@ if ($filterEvent > 0) { $where[] = 'r.event_id = ?';  $params[] = $filterEvent; 
 if ($filterStatus !== '') { $where[] = 'r.status = ?'; $params[] = $filterStatus; }
 if ($search !== '') {
     $where[]  = '(u.vorname LIKE ? OR u.nachname LIKE ? OR u.email LIKE ? OR r.buchungsnummer LIKE ?)';
-    $params[] = "%{$search}%";
-    $params[] = "%{$search}%";
-    $params[] = "%{$search}%";
-    $params[] = "%{$search}%";
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
 }
 
 $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
@@ -475,7 +475,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <input type="hidden" name="filter_search"   value="<?= htmlspecialchars($search) ?>">
                                     <button type="submit" class="btn btn-sm btn-outline-warning"
                                             title="Stornieren"
-                                            onclick="return confirm('Reservierung stornieren?');">
+                                            data-confirm="Reservierung stornieren?">
                                         <i class="bi bi-x-circle"></i>
                                     </button>
                                 </form>
@@ -491,7 +491,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <input type="hidden" name="filter_search"   value="<?= htmlspecialchars($search) ?>">
                                     <button type="submit" class="btn btn-sm btn-outline-danger"
                                             title="Endgültig löschen"
-                                            onclick="return confirm('Reservierung &laquo;<?= htmlspecialchars($r['buchungsnummer']) ?>&raquo; endgültig löschen?\nDieser Vorgang kann nicht rückgängig gemacht werden!');">
+                                            data-confirm="Reservierung <?= htmlspecialchars($r['buchungsnummer'], ENT_QUOTES) ?> endgültig löschen? Dieser Vorgang kann nicht rückgängig gemacht werden!">
                                         <i class="bi bi-trash3"></i>
                                     </button>
                                 </form>
@@ -553,7 +553,7 @@ include __DIR__ . '/../includes/navbar.php';
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Event filtern</label>
                         <select class="form-select form-select-sm" id="filterEventModal"
-                                onchange="filterTische(this.value)">
+                                data-filter-tische>
                             <option value="">Alle Events anzeigen</option>
                             <?php foreach ($alleEvents as $ev): ?>
                             <option value="<?= $ev['id'] ?>">
@@ -639,6 +639,13 @@ function filterTische(eventId) {
     sel.value = "";
     document.getElementById("freiHinweis").textContent = "";
 }
+
+/* Ersetzt onchange="filterTische(this.value)" am Event-Auswahlfeld: Inline-
+   Handler werden von der CSP blockiert, der Tischfilter im Modal war dadurch
+   wirkungslos und listete die Tische aller Events. */
+document.querySelectorAll("[data-filter-tische]").forEach(function (el) {
+    el.addEventListener("change", function () { filterTische(this.value); });
+});
 
 document.getElementById("tischSelect").addEventListener("change", function() {
     var opt = this.options[this.selectedIndex];

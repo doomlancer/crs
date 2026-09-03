@@ -52,7 +52,11 @@ if (DEBUG_MODE) {
     error_reporting(E_ALL);
     ini_set('display_errors', 1);
 } else {
-    error_reporting(0);
+    // E_ALL statt 0: error_reporting(0) unterdrückt nicht nur die Anzeige,
+    // sondern auch das Schreiben ins Log. Ein Absturz am Veranstaltungsabend
+    // hinterließe dann weder auf dem Bildschirm noch in logs/error.log eine
+    // Spur. Angezeigt wird durch display_errors=0 weiterhin nichts.
+    error_reporting(E_ALL);
     ini_set('display_errors', 0);
     ini_set('log_errors', 1);
     ini_set('error_log', __DIR__ . '/logs/error.log');

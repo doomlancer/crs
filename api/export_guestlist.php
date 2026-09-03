@@ -37,11 +37,11 @@ $stmt = $pdo->prepare(
             p.zahlungsart, p.status AS zahlungsstatus, p.betrag
      FROM reservations r
      JOIN users u    ON r.user_id      = u.id
-     JOIN seats s    ON r.seat_id      = s.id
-     JOIN tables t   ON s.table_id     = t.id
+     LEFT JOIN seats s    ON r.seat_id  = s.id
+     LEFT JOIN tables t   ON s.table_id = t.id
      LEFT JOIN payments p ON p.reservation_id = r.id
      WHERE r.event_id = ?
-     ORDER BY t.tischnummer, s.sitzplatznummer'
+     ORDER BY t.tischnummer IS NULL, t.tischnummer, s.sitzplatznummer, r.erstellt_am'
 );
 $stmt->execute([$eventId]);
 $gaeste = $stmt->fetchAll();
@@ -100,8 +100,8 @@ if ($format === 'csv') {
             $csvSafe($gast['nachname']),
             $csvSafe($gast['email']),
             $csvSafe($gast['adresse'] ?? ''),
-            $gast['tischnummer'],
-            $gast['sitzplatznummer'],
+            $gast['tischnummer']     ?? 'Freiticket',
+            $gast['sitzplatznummer'] ?? '–',
             zahlungsartLabel($gast['zahlungsart'] ?? ''),
             match($gast['zahlungsstatus'] ?? 'offen') {
                 'bezahlt'   => 'Bezahlt',
@@ -162,10 +162,17 @@ if ($format === 'pdf') {
 </head>
 <body>
     <div style="text-align:right; margin-bottom:10px;">
-        <button onclick="window.print()" style="padding:8px 16px; background:#f59e0b; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">
+        <button id="btn-drucken" style="padding:8px 16px; background:#f59e0b; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">
             🖨️ Drucken / Als PDF speichern
         </button>
     </div>
+    <?php // Inline-Handler wären durch die CSP blockiert; der Nonce erlaubt
+          // diesen Block ausdrücklich. Ohne ihn tat der Knopf nichts. ?>
+    <script nonce="<?= CSP_NONCE ?>">
+        document.getElementById('btn-drucken').addEventListener('click', function () {
+            window.print();
+        });
+    </script>
 
     <h1><?= htmlspecialchars(APP_NAME) ?> – Gästeliste</h1>
     <div class="subtitle">
@@ -214,8 +221,8 @@ if ($format === 'pdf') {
                 <td><strong><?= htmlspecialchars($gast['buchungsnummer']) ?></strong></td>
                 <td><?= htmlspecialchars($gast['vorname'] . ' ' . $gast['nachname']) ?></td>
                 <td><?= htmlspecialchars($gast['email']) ?></td>
-                <td style="text-align:center;"><?= $gast['tischnummer'] ?></td>
-                <td style="text-align:center;"><?= $gast['sitzplatznummer'] ?></td>
+                <td style="text-align:center;"><?= $gast['tischnummer'] !== null ? (int)$gast['tischnummer'] : 'Freiticket' ?></td>
+                <td style="text-align:center;"><?= $gast['sitzplatznummer'] !== null ? (int)$gast['sitzplatznummer'] : '–' ?></td>
                 <td>
                     <?= htmlspecialchars(zahlungsartLabel($gast['zahlungsart'] ?? '')) ?>
                     <span class="badge <?= ($gast['zahlungsstatus'] ?? '') === 'bezahlt' ? 'badge-success' : 'badge-warning' ?>">

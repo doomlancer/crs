@@ -28,7 +28,7 @@ try {
 
 // Bisher verkaufte Tickets
 $stmtVerk = $pdo->prepare(
-    "SELECT COUNT(*) FROM reservations WHERE event_id = ? AND status != 'abgerechnet'"
+    "SELECT COUNT(*) FROM reservations WHERE event_id = ? AND status NOT IN ('abgerechnet','storniert')"
 );
 $stmtVerk->execute([$evId]);
 $verkauft = (int)$stmtVerk->fetchColumn();
@@ -41,7 +41,7 @@ $stmtMeine = $pdo->prepare(
     "SELECT r.buchungsnummer, r.erstellt_am, p.zahlungsart, p.status AS pay_status
      FROM reservations r
      LEFT JOIN payments p ON p.reservation_id = r.id
-     WHERE r.event_id = ? AND r.user_id = ? AND r.status != 'abgerechnet'
+     WHERE r.event_id = ? AND r.user_id = ? AND r.status NOT IN ('abgerechnet','storniert')
      ORDER BY r.erstellt_am DESC"
 );
 $stmtMeine->execute([$evId, $userId]);
@@ -61,7 +61,7 @@ include __DIR__ . '/../includes/navbar.php';
     <form method="GET" class="mb-3">
         <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-calendar-event"></i></span>
-            <select name="event_id" class="form-select" onchange="this.form.submit()">
+            <select name="event_id" class="form-select" data-autosubmit>
                 <?php foreach ($events as $ev): ?>
                 <option value="<?= $ev['id'] ?>" <?= $ev['id'] == $evId ? 'selected' : '' ?>>
                     <?= htmlspecialchars($ev['name']) ?> – <?= formatDatum($ev['datum']) ?>

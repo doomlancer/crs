@@ -127,7 +127,7 @@ if ($selectedEventId) {
          LEFT  JOIN seats       s ON s.id = r.seat_id
          LEFT  JOIN tables      t ON t.id = s.table_id
          LEFT  JOIN payments    p ON p.reservation_id = r.id
-         WHERE r.event_id = ?
+         WHERE r.event_id = ? AND r.status IN ('geplant','eingecheckt')
          ORDER BY r.erstellt_am DESC"
     );
     $stmtR->execute([$selectedEventId]);
@@ -316,7 +316,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <select name="event_id" id="event_id"
                                     class="form-select form-select-sm"
                                     style="min-width:200px;"
-                                    onchange="this.form.submit()">
+                                    data-autosubmit>
                                 <?php foreach ($events as $ev): ?>
                                 <option value="<?= (int)$ev['id'] ?>"
                                     <?= $ev['id'] == $selectedEventId ? 'selected' : '' ?>>
@@ -392,7 +392,7 @@ include __DIR__ . '/../includes/navbar.php';
                                         <button type="submit"
                                                 class="btn btn-sm btn-success"
                                                 title="Check-in durchführen"
-                                                onclick="return confirm('Check-in für <?= htmlspecialchars(addslashes($r['vorname'] . ' ' . $r['nachname'])) ?> bestätigen?')">
+                                                data-confirm="Check-in für <?= htmlspecialchars($r['vorname'] . ' ' . $r['nachname'], ENT_QUOTES) ?> bestätigen?">
                                             <i class="bi bi-person-check-fill me-1"></i>Check-in
                                         </button>
                                     </form>

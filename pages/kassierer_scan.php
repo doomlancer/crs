@@ -195,12 +195,21 @@ $extraScripts = <<<'JS'
         beep(kind === 'ok');
     }
 
-    // Kurzer Signalton – ohne Audiodatei, damit nichts nachgeladen werden muss
+    // Kurzer Signalton – ohne Audiodatei, damit nichts nachgeladen werden muss.
+    // Der AudioContext wird EINMAL erzeugt und wiederverwendet: Browser erlauben
+    // nur eine Handvoll gleichzeitig offener Kontexte. Vorher entstand pro Scan
+    // ein neuer, der nie freigegeben wurde – nach etwa sechs Gästen warf der
+    // Konstruktor, der catch verschluckte es, und der Ton blieb für den Rest des
+    // Abends stumm. Zusätzlich startet ein ohne Nutzergeste erzeugter Kontext
+    // "suspended" (iOS/Safari), deshalb der resume()-Aufruf.
+    var audioCtx = null;
     function beep(good) {
         try {
             var AC = window.AudioContext || window.webkitAudioContext;
             if (!AC) return;
-            var ac = new AC();
+            if (!audioCtx) audioCtx = new AC();
+            var ac = audioCtx;
+            if (ac.state === 'suspended' && ac.resume) ac.resume();
             var osc = ac.createOscillator(), gain = ac.createGain();
             osc.connect(gain); gain.connect(ac.destination);
             osc.frequency.value = good ? 880 : 220;

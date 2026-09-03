@@ -83,7 +83,7 @@ try {
         $pdo->prepare('UPDATE payments SET status = "storniert" WHERE id = ?')
             ->execute([$res['payment_id']]);
     }
-    $pdo->prepare('UPDATE reservations SET status = "abgerechnet" WHERE id = ?')
+    $pdo->prepare('UPDATE reservations SET status = "storniert" WHERE id = ?')
         ->execute([$reservationId]);
 
     $pdo->commit();

@@ -112,7 +112,7 @@ include __DIR__ . '/../includes/navbar.php';
                     <i class="bi bi-calendar3 text-warning me-1"></i>Event:
                 </label>
                 <select name="event_id" id="event_id" class="form-select form-select-sm"
-                        style="max-width:400px;" onchange="this.form.submit()">
+                        style="max-width:400px;" data-autosubmit>
                     <?php foreach ($events as $ev): ?>
                     <option value="<?= (int)$ev['id'] ?>" <?= $ev['id'] == $selectedEventId ? 'selected' : '' ?>>
                         <?= htmlspecialchars($ev['name']) ?> (<?= formatDatum($ev['datum']) ?>)

@@ -1,4 +1,11 @@
 <?php
+// Wird per ErrorDocument (.htaccess) als eigenständiger Request ausgeliefert –
+// dann ist noch nichts geladen. Ohne diese beiden Zeilen bricht header.php an
+// der undefinierten Konstante APP_NAME ab und der Besucher bekommt eine
+// abgeschnittene, leere Seite.
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../functions.php';
+
 $pageTitle = 'Seite nicht gefunden';
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';

@@ -408,6 +408,33 @@ function getFlash(): string {
  */
 function getEventAuslastung(int $eventId): array {
     $pdo = getDB();
+
+    // Freiticket-Events haben keine Sitzplätze. Ohne diesen Zweig lieferte die
+    // Funktion dort immer 0/0/0 %, und ein ausverkauftes Event erschien auf der
+    // Startseite, der Eventübersicht, beiden Dashboards und beiden
+    // Statistikseiten als vollständig leer.
+    $stmtTyp = $pdo->prepare('SELECT event_typ, max_gaeste FROM events WHERE id = ?');
+    $stmtTyp->execute([$eventId]);
+    $ev = $stmtTyp->fetch();
+
+    if (($ev['event_typ'] ?? 'tischplan') === 'freie_tickets') {
+        $stmtVerk = $pdo->prepare(
+            "SELECT COUNT(*) FROM reservations
+             WHERE event_id = ? AND status NOT IN ('abgerechnet','storniert')"
+        );
+        $stmtVerk->execute([$eventId]);
+        $belegt = (int)$stmtVerk->fetchColumn();
+        // Ohne Kontingent gibt es keine sinnvolle Obergrenze – dann steht die
+        // Zahl der verkauften Tickets für sich.
+        $gesamt = $ev['max_gaeste'] !== null ? (int)$ev['max_gaeste'] : 0;
+        return [
+            'gesamt'  => $gesamt,
+            'belegt'  => $belegt,
+            'frei'    => $gesamt > 0 ? max(0, $gesamt - $belegt) : 0,
+            'prozent' => $gesamt > 0 ? (int)round(($belegt / $gesamt) * 100) : 0,
+        ];
+    }
+
     $stmt = $pdo->prepare(
         'SELECT
             COUNT(s.id) AS gesamt,
@@ -974,7 +1001,7 @@ function getEventLiveGrid(int $eventId): ?array {
                     u.vorname, u.nachname
              FROM reservations r
              INNER JOIN users u ON u.id = r.user_id
-             WHERE r.event_id = ? AND r.status != 'abgerechnet'
+             WHERE r.event_id = ? AND r.status NOT IN ('abgerechnet','storniert')
              ORDER BY r.erstellt_am ASC"
         );
         $stmt->execute([$eventId]);
@@ -1023,7 +1050,7 @@ function getEventLiveGrid(int $eventId): ?array {
                 u.vorname, u.nachname
          FROM tables t
          LEFT JOIN seats s ON s.table_id = t.id
-         LEFT JOIN reservations r ON r.seat_id = s.id AND r.status != 'abgerechnet'
+         LEFT JOIN reservations r ON r.seat_id = s.id AND r.status NOT IN ('abgerechnet','storniert')
          LEFT JOIN users u ON u.id = r.user_id
          WHERE t.event_id = ?
          ORDER BY t.tischnummer ASC, s.sitzplatznummer ASC"
@@ -1089,7 +1116,7 @@ function findReservationsForLookup(string $query, ?int $eventId = null, int $lim
             INNER JOIN events e ON e.id = r.event_id
             LEFT  JOIN seats  s ON s.id = r.seat_id
             LEFT  JOIN tables t ON t.id = s.table_id
-            WHERE r.status != 'abgerechnet'
+            WHERE r.status NOT IN ('abgerechnet','storniert')
               AND (u.vorname LIKE :q1 OR u.nachname LIKE :q2
                    OR CONCAT(u.vorname, ' ', u.nachname) LIKE :q3
                    OR r.buchungsnummer LIKE :q4 OR u.email LIKE :q5)";

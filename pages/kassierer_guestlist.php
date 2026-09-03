@@ -157,7 +157,8 @@ if ($selectedEventId) {
             LEFT  JOIN seats    s ON s.id = r.seat_id
             LEFT  JOIN tables   t ON t.id = s.table_id
             LEFT  JOIN payments p ON p.reservation_id = r.id
-            WHERE r.event_id = :event_id";
+            WHERE r.event_id = :event_id
+              AND r.status IN ('geplant','eingecheckt')";
 
     $params = ['event_id' => $selectedEventId];
 
@@ -261,7 +262,7 @@ include __DIR__ . '/../includes/navbar.php';
                     </label>
                     <select name="event_id" id="event_id"
                             class="form-select form-select-sm"
-                            onchange="this.form.submit()">
+                            data-autosubmit>
                         <option value="">– Event wählen –</option>
                         <?php foreach ($events as $ev): ?>
                         <option value="<?= (int)$ev['id'] ?>"
@@ -463,7 +464,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <button type="submit"
                                         class="btn btn-sm btn-success"
                                         title="Check-in durchführen"
-                                        onclick="return confirm('Check-in für <?= htmlspecialchars(addslashes($g['vorname'] . ' ' . $g['nachname'])) ?> bestätigen?')">
+                                        data-confirm="Check-in für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> bestätigen?">
                                     <i class="bi bi-person-check-fill"></i>
                                     <span class="d-none d-lg-inline ms-1">Check-in</span>
                                 </button>
@@ -492,7 +493,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <button type="submit"
                                         class="btn btn-sm btn-outline-primary"
                                         title="Als bezahlt markieren"
-                                        onclick="return confirm('Zahlung für <?= htmlspecialchars(addslashes($g['vorname'] . ' ' . $g['nachname'])) ?> als bezahlt markieren?')">
+                                        data-confirm="Zahlung für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> als bezahlt markieren?">
                                     <i class="bi bi-cash-coin"></i>
                                     <span class="d-none d-lg-inline ms-1">Bezahlt</span>
                                 </button>

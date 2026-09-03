@@ -184,8 +184,12 @@ try {
             ]));
         }
     }
-} catch (Exception $e) {
-    error_log('PayPal IPN DB-Fehler: ' . $e->getMessage());
+} catch (Throwable $e) {
+    // Throwable statt Exception: Ein TypeError o.ä. wäre hier nicht gefangen
+    // worden. Die txn_id ist zu diesem Zeitpunkt bereits vermerkt, PayPals
+    // Wiederholung liefe also in "bereits verarbeitet" – die Zahlung bliebe
+    // dauerhaft unquittiert.
+    error_log('PayPal IPN Fehler: ' . $e->getMessage());
 }
 
 http_response_code(200);

@@ -10,3 +10,19 @@ uploads/*
 .vscode
 *.swp
 migrate_web.php
+
+# Gehört nicht ins Produktions-Image: liegt sonst im Web-Root und ist – je nach
+# Webserver-Konfiguration – abrufbar. Für den Betrieb wird nichts davon gebraucht.
+.env.example
+database.sql
+setup_plesk.sql
+docker-compose.yml
+docker-compose.build.yml
+Dockerfile
+package.json
+package-lock.json
+vite.config.js
+src
+update.sh
+auto_update.sh
+README.txt

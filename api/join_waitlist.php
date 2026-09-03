@@ -57,7 +57,7 @@ if ($stmtCheck->fetch()) {
 
 // Prüfen ob bereits eine aktive Reservierung für dieses Event besteht
 $stmtRes = $pdo->prepare(
-    "SELECT id FROM reservations WHERE user_id = ? AND event_id = ? AND status != 'abgerechnet'"
+    "SELECT id FROM reservations WHERE user_id = ? AND event_id = ? AND status NOT IN ('abgerechnet','storniert')"
 );
 $stmtRes->execute([$userId, $eventId]);
 if ($stmtRes->fetch()) {

@@ -208,7 +208,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td>
                                     <?php if ($res['status'] === 'geplant'): ?>
                                     <form method="POST" action="/api/reserve_seat.php"
-                                          onsubmit="return confirm('Möchten Sie diese Reservierung wirklich stornieren?')">
+                                          data-confirm="Möchten Sie diese Reservierung wirklich stornieren?">
                                         <?= csrfField() ?>
                                         <input type="hidden" name="action" value="cancel">
                                         <input type="hidden" name="event_id" value="">
@@ -332,7 +332,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td><small class="text-muted"><?= date('d.m.Y H:i', strtotime($wl['erstellt_am'])) ?> Uhr</small></td>
                                 <td>
                                     <form method="POST" action="/api/join_waitlist.php"
-                                          onsubmit="return confirm('Von der Warteliste entfernen?')">
+                                          data-confirm="Von der Warteliste entfernen?">
                                         <?= csrfField() ?>
                                         <input type="hidden" name="action" value="leave">
                                         <input type="hidden" name="event_id" value="<?= $wl['event_id'] ?>">

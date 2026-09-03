@@ -400,7 +400,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <?= csrfField() ?>
                         <input type="hidden" name="post_action" value="remove_logo">
                         <button type="submit" class="btn btn-outline-danger btn-sm"
-                                onclick="return confirm('Logo entfernen?')">
+                                data-confirm="Logo entfernen?">
                             <i class="bi bi-trash me-1"></i>Logo entfernen
                         </button>
                     </form>
@@ -442,7 +442,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <?= csrfField() ?>
                         <input type="hidden" name="post_action" value="remove_favicon">
                         <button type="submit" class="btn btn-outline-danger btn-sm"
-                                onclick="return confirm('Favicon entfernen?')">
+                                data-confirm="Favicon entfernen?">
                             <i class="bi bi-trash me-1"></i>Favicon entfernen
                         </button>
                     </form>

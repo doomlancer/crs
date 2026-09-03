@@ -46,7 +46,7 @@ try {
 
     // Meine Reservierungen
     $stmtMine = $pdo->prepare(
-        'SELECT seat_id FROM reservations WHERE user_id = ? AND event_id = ? AND status != "abgerechnet"'
+        'SELECT seat_id FROM reservations WHERE user_id = ? AND event_id = ? AND status NOT IN ("abgerechnet","storniert")'
     );
     $stmtMine->execute([$userId, $eventId]);
     $meineSitze = array_column($stmtMine->fetchAll(), 'seat_id');

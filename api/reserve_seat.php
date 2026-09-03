@@ -65,7 +65,7 @@ if ($action === 'reserve_free_ticket') {
         // Kontingent prüfen (wenn max_gaeste gesetzt)
         if ($event['max_gaeste'] !== null) {
             $stmtCount = $pdo->prepare(
-                "SELECT COUNT(*) FROM reservations WHERE event_id = ? AND status != 'abgerechnet'"
+                "SELECT COUNT(*) FROM reservations WHERE event_id = ? AND status NOT IN ('abgerechnet','storniert')"
             );
             $stmtCount->execute([$eventId]);
             $verkauft = (int)$stmtCount->fetchColumn();
@@ -303,13 +303,13 @@ if ($action === 'cancel') {
             // Über Reservation-ID stornieren
             if ($isAdmin) {
                 $stmt = $pdo->prepare(
-                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                    'SELECT r.id, r.user_id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
                      WHERE r.id = ? AND r.status = "geplant"'
                 );
                 $stmt->execute([$reservationId]);
             } else {
                 $stmt = $pdo->prepare(
-                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                    'SELECT r.id, r.user_id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
                      WHERE r.id = ? AND r.user_id = ? AND r.status = "geplant"'
                 );
                 $stmt->execute([$reservationId, $userId]);
@@ -318,13 +318,13 @@ if ($action === 'cancel') {
             // Über Seat-ID stornieren
             if ($isAdmin) {
                 $stmt = $pdo->prepare(
-                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                    'SELECT r.id, r.user_id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
                      WHERE r.seat_id = ? AND r.status = "geplant"'
                 );
                 $stmt->execute([$seatId]);
             } else {
                 $stmt = $pdo->prepare(
-                    'SELECT r.id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
+                    'SELECT r.id, r.user_id, r.seat_id, r.event_id, r.buchungsnummer FROM reservations r
                      WHERE r.seat_id = ? AND r.user_id = ? AND r.status = "geplant"'
                 );
                 $stmt->execute([$seatId, $userId]);
@@ -339,7 +339,7 @@ if ($action === 'cancel') {
         }
 
         // Reservierung stornieren
-        $pdo->prepare('UPDATE reservations SET status = "abgerechnet" WHERE id = ?')
+        $pdo->prepare('UPDATE reservations SET status = "storniert" WHERE id = ?')
             ->execute([$reservation['id']]);
         // Sitzplatz freigeben
         $pdo->prepare('UPDATE seats SET status = "verfuegbar" WHERE id = ?')
@@ -350,9 +350,12 @@ if ($action === 'cancel') {
 
         logAudit('STORNIERUNG', 'reservations', $reservation['id'], "Stornierung durch Benutzer");
 
-        // Stornierungsbestätigung per E-Mail
+        // Stornierungsbestätigung per E-Mail.
+        // Empfänger ist der Gast, dem die Reservierung gehört – nicht der
+        // Angemeldete. Storniert ein Admin eine fremde Buchung, ging die
+        // Bestätigung sonst an den Admin, und der Gast erfuhr nichts davon.
         $stmtUserInfo = $pdo->prepare('SELECT email, vorname FROM users WHERE id = ?');
-        $stmtUserInfo->execute([$userId]);
+        $stmtUserInfo->execute([(int)($reservation['user_id'] ?? $userId)]);
         $ui = $stmtUserInfo->fetch();
         $stmtEvtInfo  = $pdo->prepare('SELECT name FROM events WHERE id = ?');
         $stmtEvtInfo->execute([$reservation['event_id']]);

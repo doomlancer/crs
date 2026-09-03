@@ -192,7 +192,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <select name="event_id" id="event_id"
                         class="form-select form-select-sm"
                         style="max-width: 400px;"
-                        onchange="this.form.submit()">
+                        data-autosubmit>
                     <option value="">– Event wählen –</option>
                     <?php foreach ($events as $ev): ?>
                     <option value="<?= (int)$ev['id'] ?>"

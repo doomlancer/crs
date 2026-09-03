@@ -118,19 +118,29 @@ foreach ($eventAuslastung as $ev) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tabelle: Aufschlüsselung pro Event
 // ═══════════════════════════════════════════════════════════════════════════════
+// Bewusst mit Unterabfragen statt mit mehreren LEFT JOINs: Sitzplätze und
+// Reservierungen hängen beide unabhängig am Event, ohne Beziehung zueinander.
+// Ein gemeinsamer JOIN erzeugt daher ein Kreuzprodukt aus beiden – jede Zahlung
+// wurde so oft summiert, wie das Event Sitzplätze hat. Bei 200 Plätzen stand
+// hier der 200-fache Umsatz, und die Fußzeile summierte das ebenfalls falsch
+// auf. Nur die COUNT(DISTINCT …)-Spalten waren davon nicht betroffen.
 $eventBreakdown = $pdo->query(
     "SELECT e.id, e.name, e.datum, e.status,
-            COUNT(DISTINCT r.id) AS reservierungen,
-            COUNT(DISTINCT s.id) AS sitze_gesamt,
-            SUM(CASE WHEN s.status != 'verfuegbar' THEN 1 ELSE 0 END) AS sitze_belegt,
-            COALESCE(SUM(CASE WHEN p.status='bezahlt' THEN p.betrag ELSE 0 END), 0) AS umsatz_bezahlt,
-            COALESCE(SUM(CASE WHEN p.status='offen'   THEN p.betrag ELSE 0 END), 0) AS umsatz_offen
+            (SELECT COUNT(*) FROM reservations r
+              WHERE r.event_id = e.id) AS reservierungen,
+            (SELECT COUNT(*) FROM seats s
+               JOIN `tables` t ON s.table_id = t.id
+              WHERE t.event_id = e.id) AS sitze_gesamt,
+            (SELECT COUNT(*) FROM seats s
+               JOIN `tables` t ON s.table_id = t.id
+              WHERE t.event_id = e.id AND s.status != 'verfuegbar') AS sitze_belegt,
+            (SELECT COALESCE(SUM(p.betrag), 0) FROM payments p
+               JOIN reservations r ON r.id = p.reservation_id
+              WHERE r.event_id = e.id AND p.status = 'bezahlt') AS umsatz_bezahlt,
+            (SELECT COALESCE(SUM(p.betrag), 0) FROM payments p
+               JOIN reservations r ON r.id = p.reservation_id
+              WHERE r.event_id = e.id AND p.status = 'offen') AS umsatz_offen
      FROM events e
-     LEFT JOIN tables t ON t.event_id = e.id
-     LEFT JOIN seats s ON s.table_id = t.id
-     LEFT JOIN reservations r ON r.event_id = e.id
-     LEFT JOIN payments p ON p.reservation_id = r.id
-     GROUP BY e.id
      ORDER BY e.datum DESC"
 )->fetchAll();
 

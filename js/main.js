@@ -13,8 +13,31 @@ document.addEventListener('DOMContentLoaded', () => {
     initAutoFlashDismiss();
     initFormValidation();
     initConfirmDialogs();
+    initAutoSubmit();
     initTableFilter();
 });
+
+// =====================
+// Selektoren, die sich beim Wechsel selbst abschicken
+// =====================
+// Ersetzt onchange="this.form.submit()". Inline-Attribute werden von der
+// Content-Security-Policy (script-src ohne 'unsafe-inline') blockiert – die
+// Event-Umschalter auf den Kassierer-Seiten waren dadurch schlicht funktionslos
+// und ließen sich ohne Submit-Button gar nicht bedienen.
+function initAutoSubmit() {
+    document.querySelectorAll('[data-autosubmit]').forEach(el => {
+        el.addEventListener('change', () => {
+            const ziel = el.dataset.autosubmit;
+            if (ziel === 'location') {
+                const url = new URL(window.location.href);
+                url.searchParams.set(el.name, el.value);
+                window.location.href = url.toString();
+            } else if (el.form) {
+                el.form.submit();
+            }
+        });
+    });
+}
 
 // =====================
 // Bootstrap Tooltips
@@ -74,14 +97,22 @@ function initFormValidation() {
 // =====================
 // Bestätigungs-Dialoge
 // =====================
+// Ersetzt onclick/onsubmit="return confirm(...)". Solche Inline-Attribute
+// werden von der CSP blockiert; sämtliche Sicherheitsabfragen vor dem
+// Stornieren, Löschen und Einchecken waren dadurch wirkungslos – die Aktion
+// lief beim ersten Klick durch, ohne Rückfrage.
 function initConfirmDialogs() {
     document.querySelectorAll('[data-confirm]').forEach(el => {
-        el.addEventListener('click', e => {
-            const msg = el.dataset.confirm || 'Sind Sie sicher?';
-            if (!confirm(msg)) {
-                e.preventDefault();
-            }
-        });
+        const frage = () => el.dataset.confirm || 'Sind Sie sicher?';
+        if (el.tagName === 'FORM') {
+            el.addEventListener('submit', e => {
+                if (!confirm(frage())) e.preventDefault();
+            });
+        } else {
+            el.addEventListener('click', e => {
+                if (!confirm(frage())) e.preventDefault();
+            });
+        }
     });
 }
 

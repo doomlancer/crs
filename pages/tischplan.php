@@ -216,7 +216,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <i class="bi bi-calendar3 text-warning me-1"></i>Event:
                         </label>
                         <select name="event_id" id="eventSelect" class="form-select form-select-sm"
-                                onchange="window.location.href='/pages/tischplan.php?event_id='+encodeURIComponent(this.value)">
+                                data-autosubmit="location">
                             <?php foreach ($events as $ev): ?>
                             <option value="<?= (int)$ev['id'] ?>"
                                     <?= (int)$ev['id'] === $eventId ? 'selected' : '' ?>>
@@ -357,7 +357,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 </div>
                                 <?php foreach ($eigeneSitzeHier as $es): ?>
                                 <form method="POST" action="/api/cancel_seat.php" class="d-inline"
-                                      onsubmit="return confirm('<?= htmlspecialchars(sprintf(__('seating.cancel_seat'), (int)$es['sitzplatznummer']), ENT_QUOTES) ?> – Tisch <?= (int)$tisch['tischnummer'] ?>?')">
+                                      data-confirm="<?= htmlspecialchars(sprintf(__('seating.cancel_seat'), (int)$es['sitzplatznummer']), ENT_QUOTES) ?> – Tisch <?= (int)$tisch['tischnummer'] ?>?">
                                     <?= csrfField() ?>
                                     <input type="hidden" name="reservation_id" value="<?= (int)$es['reservation_id'] ?>">
                                     <input type="hidden" name="event_id" value="<?= $eventId ?>">

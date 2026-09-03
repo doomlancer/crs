@@ -20,7 +20,21 @@ ErrorDocument 404 /pages/error_404.php
 # Konfigurationen herunterladen.
 RedirectMatch 404 /\.git(/|$)
 
-# Sensible Dateien sperren
+# Sensible Dateien sperren.
+# Neben den Endungen unten auch die Projekt- und Deployment-Dateien, die im
+# Web-Root liegen: .env.example endet auf ".example" und fiel deshalb nicht
+# unter die \.env$-Regel – sie nennt aber die Adresse des Administratorkontos,
+# den SMTP-Benutzer und die interne Serveradresse.
+<FilesMatch "^(\.env\..*|\.gitignore|\.dockerignore|Dockerfile|docker-compose.*\.yml|package(-lock)?\.json|vite\.config\.js|.*\.sh|README.*)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
 <FilesMatch "\.(sql|log|env|ini|conf|bak)$">
     <IfModule mod_authz_core.c>
         Require all denied

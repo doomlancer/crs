@@ -1,4 +1,10 @@
 <?php
+// Wird sowohl über requireRole() eingebunden als auch per ErrorDocument als
+// eigenständiger Request ausgeliefert. Im zweiten Fall ist noch nichts geladen;
+// require_once ist deshalb nötig und im ersten Fall ein No-op.
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../functions.php';
+
 $pageTitle = 'Zugriff verweigert';
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';

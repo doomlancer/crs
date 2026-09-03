@@ -111,9 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // passwort_geaendert_am mitschreiben: setzt ein Admin das
                     // Passwort zurück, müssen offene Sitzungen dieses Kontos
                     // sofort ungültig werden (Prüfung in currentIdentity()).
+                    $pwZeitpunkt = date('Y-m-d H:i:s');
                     $pwSet = ', passwort=?, passwort_geaendert_am=?';
                     $params[] = hashPassword($_POST['neues_passwort']);
-                    $params[] = date('Y-m-d H:i:s');
+                    $params[] = $pwZeitpunkt;
                 }
             }
 
@@ -124,6 +125,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      adresse=?, rolle=?, aktiv=? {$pwSet} WHERE id=?"
                 );
                 $stmt->execute($params);
+                // Beim eigenen Konto den Stand in der Sitzung nachziehen –
+                // sonst verwirft currentIdentity() beim nächsten Request die
+                // eigene Sitzung und der Admin fliegt aus der Verwaltung.
+                if (isset($pwZeitpunkt) && $id === $myId) {
+                    $_SESSION['pw_epoche'] = $pwZeitpunkt;
+                    session_regenerate_id(true);
+                }
                 logAudit('UPDATE', 'users', $id,
                     json_encode(compact('vorname','nachname','email','rolle','aktiv')));
                 setFlash('success', "Benutzer {$vorname} {$nachname} wurde aktualisiert.");
@@ -144,10 +152,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$id]);
             $u = $stmt->fetch();
             if ($u) {
-                $pdo->prepare('DELETE FROM users WHERE id=?')->execute([$id]);
-                logAudit('DELETE', 'users', $id,
-                    "Benutzer gelöscht: {$u['vorname']} {$u['nachname']} ({$u['email']})");
-                setFlash('success', "Benutzer {$u['vorname']} {$u['nachname']} wurde gelöscht.");
+                // Der Fremdschlüssel auf reservations steht auf RESTRICT: Ein
+                // Benutzer mit Buchungen lässt sich nicht löschen. Ohne diese
+                // Behandlung endete der Klick in einer weißen Seite ohne jede
+                // Rückmeldung.
+                try {
+                    $pdo->prepare('DELETE FROM users WHERE id=?')->execute([$id]);
+                    logAudit('DELETE', 'users', $id,
+                        "Benutzer gelöscht: {$u['vorname']} {$u['nachname']} ({$u['email']})");
+                    setFlash('success', "Benutzer {$u['vorname']} {$u['nachname']} wurde gelöscht.");
+                } catch (PDOException $e) {
+                    error_log('Benutzer löschen fehlgeschlagen: ' . $e->getMessage());
+                    setFlash('error', "Benutzer {$u['vorname']} {$u['nachname']} kann nicht gelöscht "
+                        . 'werden, weil noch Reservierungen vorliegen. Deaktivieren Sie das Konto '
+                        . 'stattdessen, oder entfernen Sie zuerst die Buchungen.');
+                }
             }
         }
         redirect('/pages/admin_users.php');
@@ -190,9 +209,9 @@ $where  = [];
 $params = [];
 if ($search !== '') {
     $where[]  = '(u.vorname LIKE ? OR u.nachname LIKE ? OR u.email LIKE ?)';
-    $params[] = "%{$search}%";
-    $params[] = "%{$search}%";
-    $params[] = "%{$search}%";
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
+    $params[] = likePattern($search);
 }
 if ($filterRolle !== '') {
     $where[]  = 'u.rolle = ?';
@@ -485,7 +504,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <button type="submit"
                                             class="btn btn-sm <?= $u['aktiv'] ? 'btn-outline-danger' : 'btn-outline-success' ?>"
                                             title="<?= $u['aktiv'] ? 'Deaktivieren' : 'Aktivieren' ?>"
-                                            onclick="return confirm('Benutzer <?= $u['aktiv'] ? 'deaktivieren' : 'aktivieren' ?>?');">
+                                            data-confirm="Benutzer <?= $u['aktiv'] ? 'deaktivieren' : 'aktivieren' ?>?">
                                         <i class="bi bi-<?= $u['aktiv'] ? 'slash-circle' : 'check-circle' ?>"></i>
                                     </button>
                                 </form>
@@ -496,7 +515,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <button type="submit"
                                             class="btn btn-sm btn-outline-danger"
                                             title="Löschen"
-                                            onclick="return confirm('Benutzer <?= htmlspecialchars(addslashes($u['vorname'] . ' ' . $u['nachname'])) ?> endgültig löschen?<?= (int)$u['reservierungen'] > 0 ? ' Achtung: Dieser Benutzer hat ' . (int)$u['reservierungen'] . ' Reservierung(en)!' : '' ?>');">
+                                            data-confirm="Benutzer <?= htmlspecialchars($u['vorname'] . ' ' . $u['nachname'], ENT_QUOTES) ?> endgültig löschen?<?= (int)$u['reservierungen'] > 0 ? ' Achtung: Dieser Benutzer hat ' . (int)$u['reservierungen'] . ' Reservierung(en)!' : '' ?>">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>

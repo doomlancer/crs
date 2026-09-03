@@ -89,7 +89,7 @@ if ($eventId !== null) {
                 SUM(CASE WHEN status = 'eingecheckt' THEN 1 ELSE 0 END) AS eingecheckt,
                 COUNT(*) AS gesamt
              FROM reservations
-             WHERE event_id = ? AND status != 'abgerechnet'"
+             WHERE event_id = ? AND status NOT IN ('abgerechnet','storniert')"
         );
         $stmtC->execute([$eventId]);
         $row = $stmtC->fetch();

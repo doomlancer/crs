@@ -116,9 +116,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$id]);
             $ev = $stmt->fetch();
             if ($ev) {
-                $pdo->prepare('DELETE FROM events WHERE id=?')->execute([$id]);
-                logAudit('DELETE', 'events', $id, json_encode(['name' => $ev['name']]));
-                setFlash('success', 'Event "' . htmlspecialchars($ev['name']) . '" wurde gelöscht.');
+                // Das Löschen kaskadiert auf Tische und Sitze, dort greift aber
+                // der RESTRICT-Fremdschlüssel der Reservierungen. Ein Event mit
+                // Buchungen ließ sich deshalb nie löschen – der Admin sah bloß
+                // eine weiße Seite.
+                try {
+                    $pdo->prepare('DELETE FROM events WHERE id=?')->execute([$id]);
+                    logAudit('DELETE', 'events', $id, json_encode(['name' => $ev['name']]));
+                    setFlash('success', 'Event "' . htmlspecialchars($ev['name']) . '" wurde gelöscht.');
+                } catch (PDOException $e) {
+                    error_log('Event löschen fehlgeschlagen: ' . $e->getMessage());
+                    setFlash('error', 'Dieses Event kann nicht gelöscht werden, weil dazu noch '
+                        . 'Reservierungen bestehen. Stornieren Sie diese zuerst, oder markieren '
+                        . 'Sie das Event als abgerechnet.');
+                }
             }
         }
         redirect('/pages/admin_events.php');
@@ -220,9 +231,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $table_id = (int)($_POST['table_id'] ?? 0);
         $event_id = (int)($_POST['event_id'] ?? 0);
         if ($table_id > 0) {
-            $pdo->prepare('DELETE FROM tables WHERE id=?')->execute([$table_id]);
-            logAudit('DELETE', 'tables', $table_id, json_encode(['event_id'=>$event_id]));
-            setFlash('success', 'Tisch wurde gelöscht.');
+            // Kaskadiert auf die Sitze; ein Sitz mit Reservierung blockiert das
+            // per RESTRICT. Bisher endete das in einer weißen Seite.
+            try {
+                $pdo->prepare('DELETE FROM tables WHERE id=?')->execute([$table_id]);
+                logAudit('DELETE', 'tables', $table_id, json_encode(['event_id'=>$event_id]));
+                setFlash('success', 'Tisch wurde gelöscht.');
+            } catch (PDOException $e) {
+                error_log('Tisch löschen fehlgeschlagen: ' . $e->getMessage());
+                setFlash('error', 'Dieser Tisch kann nicht gelöscht werden, weil auf seinen '
+                    . 'Plätzen noch Reservierungen liegen.');
+            }
         }
         redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
     }
@@ -481,7 +500,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 </td>
                                 <td>
                                     <form method="post" class="d-inline"
-                                          onsubmit="return confirm('Tisch <?= (int)$t['tischnummer'] ?> wirklich löschen? Alle Sitzplätze und Reservierungen werden gelöscht!');">
+                                          data-confirm="Tisch <?= (int)$t['tischnummer'] ?> wirklich löschen? Alle Sitzplätze und Reservierungen werden gelöscht!">
                                         <?= csrfField() ?>
                                         <input type="hidden" name="post_action" value="delete_table">
                                         <input type="hidden" name="table_id" value="<?= $t['id'] ?>">
@@ -671,7 +690,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 </a>
                                 <?php if ($ev['status'] !== 'abgerechnet'): ?>
                                 <form method="post" class="d-inline"
-                                      onsubmit="return confirm('Event als abgerechnet markieren?');">
+                                      data-confirm="Event als abgerechnet markieren?">
                                     <?= csrfField() ?>
                                     <input type="hidden" name="post_action" value="mark_abgerechnet">
                                     <input type="hidden" name="event_id" value="<?= $ev['id'] ?>">
@@ -682,7 +701,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 </form>
                                 <?php endif; ?>
                                 <form method="post" class="d-inline"
-                                      onsubmit="return confirm('Event und alle zugehörigen Daten wirklich löschen?');">
+                                      data-confirm="Event und alle zugehörigen Daten wirklich löschen?">
                                     <?= csrfField() ?>
                                     <input type="hidden" name="post_action" value="delete_event">
                                     <input type="hidden" name="event_id" value="<?= $ev['id'] ?>">
@@ -715,7 +734,7 @@ include __DIR__ . '/../includes/navbar.php';
 
                 <div class="col-md-4">
                     <label class="form-label fw-semibold small">Event <span class="text-danger">*</span></label>
-                    <select name="event_id" id="res_event" class="form-select" required onchange="loadSeats(this.value)">
+                    <select name="event_id" id="res_event" class="form-select" required data-load-seats>
                         <option value="">-- Event wählen --</option>
                         <?php foreach ($activeEvents4Res as $ev): ?>
                         <option value="<?= $ev['id'] ?>">
@@ -900,6 +919,12 @@ if (userInput) {
 }
 
 // Sitzplätze laden wenn Event gewählt
+/* Ersetzt onchange="loadSeats(this.value)" – Inline-Handler werden von der
+   Content-Security-Policy blockiert. */
+document.querySelectorAll("[data-load-seats]").forEach(function (el) {
+    el.addEventListener("change", function () { loadSeats(this.value); });
+});
+
 function loadSeats(eventId) {
     const seatSel = document.getElementById("res_seat");
     seatSel.innerHTML = "<option>Wird geladen...</option>";
