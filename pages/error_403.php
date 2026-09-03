@@ -17,8 +17,8 @@ include __DIR__ . '/../includes/navbar.php';
         <a href="/index.php" class="btn btn-warning me-2">
             <i class="bi bi-house me-2"></i>Zur Startseite
         </a>
-        <a href="javascript:history.back()" class="btn btn-outline-secondary">
-            <i class="bi bi-arrow-left me-2"></i>Zurück
+        <a href="/pages/events.php" class="btn btn-outline-secondary">
+            <i class="bi bi-calendar-event me-2"></i>Zu den Events
         </a>
     </div>
 </main>
