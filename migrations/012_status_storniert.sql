@@ -19,16 +19,19 @@
 -- storniert oder abgerechnet wurden. Sie bleiben wie sie sind; ab hier ist
 -- die Unterscheidung sauber.
 
+-- Wie bei 009 sind alle Schritte wiederholbar formuliert, damit ein Abbruch
+-- mittendrin den nächsten Containerstart nicht blockiert.
+
 ALTER TABLE `reservations`
   MODIFY COLUMN `status` ENUM('geplant','eingecheckt','abgerechnet','storniert')
   NOT NULL DEFAULT 'geplant';
 
-ALTER TABLE `reservations` DROP INDEX `uq_seat_aktiv`;
-ALTER TABLE `reservations` DROP COLUMN `seat_aktiv`;
+ALTER TABLE `reservations` DROP INDEX  IF EXISTS `uq_seat_aktiv`;
+ALTER TABLE `reservations` DROP COLUMN IF EXISTS `seat_aktiv`;
 
 ALTER TABLE `reservations`
-  ADD COLUMN `seat_aktiv` INT
+  ADD COLUMN IF NOT EXISTS `seat_aktiv` INT
     AS (IF(`status` IN ('abgerechnet','storniert'), NULL, `seat_id`)) STORED;
 
 ALTER TABLE `reservations`
-  ADD UNIQUE KEY `uq_seat_aktiv` (`seat_aktiv`);
+  ADD UNIQUE KEY IF NOT EXISTS `uq_seat_aktiv` (`seat_aktiv`);

@@ -15,12 +15,18 @@
 -- Schutz gegen Doppelbuchung vollständig erhalten, die Historie bleibt
 -- erhalten, und stornierte Plätze werden wieder verkäuflich.
 
+-- Alle Schritte sind mit IF (NOT) EXISTS formuliert und damit wiederholbar.
+-- Grund: DDL ist in MariaDB nicht transaktionssicher. Bricht eine Datei nach
+-- der ersten Anweisung ab, bleibt deren Wirkung bestehen, die Migration gilt
+-- aber als nicht ausgeführt – der nächste Start scheitert dann an genau dieser
+-- ersten Anweisung, und der Container kommt nicht mehr hoch.
+
 ALTER TABLE `reservations`
-  ADD COLUMN `seat_aktiv` INT
+  ADD COLUMN IF NOT EXISTS `seat_aktiv` INT
     AS (IF(`status` = 'abgerechnet', NULL, `seat_id`)) STORED;
 
 ALTER TABLE `reservations`
-  DROP INDEX `seat_unique`;
+  DROP INDEX IF EXISTS `seat_unique`;
 
 ALTER TABLE `reservations`
-  ADD UNIQUE KEY `uq_seat_aktiv` (`seat_aktiv`);
+  ADD UNIQUE KEY IF NOT EXISTS `uq_seat_aktiv` (`seat_aktiv`);
