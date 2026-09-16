@@ -25,6 +25,14 @@ ALTER TABLE `reservations`
   ADD COLUMN IF NOT EXISTS `seat_aktiv` INT
     AS (IF(`status` = 'abgerechnet', NULL, `seat_id`)) STORED;
 
+-- seat_unique erfüllt zwei Aufgaben: Er verhindert Doppelbuchungen UND dient
+-- dem Fremdschlüssel fk_res_seat als Index auf seat_id. InnoDB verweigert das
+-- Löschen, solange kein anderer Index diese Spalte abdeckt ("Cannot drop index
+-- 'seat_unique': needed in a foreign key constraint"). Deshalb zuerst einen
+-- einfachen Index anlegen, der die Fremdschlüssel-Rolle übernimmt.
+ALTER TABLE `reservations`
+  ADD INDEX IF NOT EXISTS `idx_res_seat` (`seat_id`);
+
 ALTER TABLE `reservations`
   DROP INDEX IF EXISTS `seat_unique`;
 

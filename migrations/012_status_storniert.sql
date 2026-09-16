@@ -22,12 +22,17 @@
 -- Wie bei 009 sind alle Schritte wiederholbar formuliert, damit ein Abbruch
 -- mittendrin den nächsten Containerstart nicht blockiert.
 
-ALTER TABLE `reservations`
-  MODIFY COLUMN `status` ENUM('geplant','eingecheckt','abgerechnet','storniert')
-  NOT NULL DEFAULT 'geplant';
+-- Reihenfolge ist hier wesentlich: Die generierte Spalte seat_aktiv liest
+-- status. Solange sie existiert, verweigert MariaDB das Ändern der ENUM-
+-- Definition von status. Also erst Index und Spalte entfernen, dann den Typ
+-- erweitern, dann beides mit der neuen Bedingung wieder aufbauen.
 
 ALTER TABLE `reservations` DROP INDEX  IF EXISTS `uq_seat_aktiv`;
 ALTER TABLE `reservations` DROP COLUMN IF EXISTS `seat_aktiv`;
+
+ALTER TABLE `reservations`
+  MODIFY COLUMN `status` ENUM('geplant','eingecheckt','abgerechnet','storniert')
+  NOT NULL DEFAULT 'geplant';
 
 ALTER TABLE `reservations`
   ADD COLUMN IF NOT EXISTS `seat_aktiv` INT
