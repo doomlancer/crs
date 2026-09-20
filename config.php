@@ -25,7 +25,7 @@ foreach ([
     'DB_HOST','DB_NAME','DB_USER','DB_PASS','DEBUG_MODE','APP_NAME','APP_URL',
     'TICKET_PREIS','FORCE_HTTPS','PAYPAL_EMAIL','PAYPAL_SANDBOX',
     'SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_FROM_NAME',
-    'TICKET_SECRET','TICKET_SECRET_DIR',
+    'TICKET_SECRET','TICKET_SECRET_DIR','TRUSTED_PROXIES',
 ] as $__k) {
     $__v = getenv($__k);
     if ($__v !== false && !isset($_ENV[$__k])) {
@@ -99,13 +99,56 @@ function getDB(): PDO {
     return $pdo;
 }
 
+/**
+ * Prüft, ob eine IP-Adresse in einer Liste von Einzel-IPs/CIDR-Bereichen liegt.
+ * Eigenständig statt aus functions.php importiert, weil config.php vor
+ * functions.php geladen wird.
+ */
+function crsIpIsTrusted(string $ip, array $trusted): bool {
+    $ipBin = @inet_pton($ip);
+    if ($ipBin === false) return false;
+    foreach ($trusted as $entry) {
+        $entry = trim($entry);
+        if ($entry === '') continue;
+        if (!str_contains($entry, '/')) {
+            if (@inet_pton($entry) === $ipBin) return true;
+            continue;
+        }
+        [$subnet, $bits] = explode('/', $entry, 2);
+        $subBin = @inet_pton($subnet);
+        $bits   = (int)$bits;
+        if ($subBin === false || strlen($subBin) !== strlen($ipBin)) continue; // kein Mix v4/v6
+        $bytes = intdiv($bits, 8);
+        if ($bytes > 0 && substr($ipBin, 0, $bytes) !== substr($subBin, 0, $bytes)) continue;
+        $remBits = $bits % 8;
+        if ($remBits === 0) return true;
+        $mask = chr((0xFF << (8 - $remBits)) & 0xFF);
+        if ((substr($ipBin, $bytes, 1) & $mask) === (substr($subBin, $bytes, 1) & $mask)) return true;
+    }
+    return false;
+}
+
 // Effektives Protokoll ermitteln – erkennt auch TLS-Terminierung durch einen
 // Reverse-Proxy (SWAG / Nginx Proxy Manager / Cloudflare / Traefik).
+//
+// X-Forwarded-Proto/-Ssl werden NUR akzeptiert, wenn die Anfrage nachweislich
+// von einem als vertrauenswürdig konfigurierten Proxy kommt (TRUSTED_PROXIES
+// in .env, kommagetrennte IPs/CIDR-Bereiche). Ohne diese Prüfung könnte jeder
+// Client, der den App-Container direkt erreicht – z. B. jeder im selben LAN,
+// sobald FORCE_HTTPS=true gesetzt wird – diesen Header selbst mitschicken und
+// damit session.cookie_secure fälschlich als "gesichert" erscheinen lassen.
+// Ohne konfigurierten Proxy (Standard bei direktem Port-Mapping) wird der
+// Header schlicht ignoriert.
+$trustedProxies   = array_filter(array_map('trim', explode(',', $_ENV['TRUSTED_PROXIES'] ?? '')));
+$fromTrustedProxy = $trustedProxies !== [] && crsIpIsTrusted($_SERVER['REMOTE_ADDR'] ?? '', $trustedProxies);
+
 $isHttps = (
        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
-    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
-    || (($_SERVER['HTTP_X_FORWARDED_SSL']   ?? '') === 'on')
     || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+    || ($fromTrustedProxy && (
+           ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
+        || ($_SERVER['HTTP_X_FORWARDED_SSL']   ?? '') === 'on'
+       ))
 );
 
 // FORCE_HTTPS=false erlaubt reinen HTTP-Betrieb (lokaler Direktzugriff ohne Proxy).

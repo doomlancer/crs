@@ -213,7 +213,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card-body py-2">
                     <form method="GET" action="" class="d-flex align-items-center gap-2">
                         <label for="eventSelect" class="form-label mb-0 fw-semibold text-nowrap small">
-                            <i class="bi bi-calendar3 text-warning me-1"></i>Event:
+                            <i class="bi bi-calendar3 text-warning me-1"></i><?= __('seating.event_label') ?>
                         </label>
                         <select name="event_id" id="eventSelect" class="form-select form-select-sm"
                                 data-autosubmit="location">
@@ -259,7 +259,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <?= formatDatum($selectedEvent['datum']) ?>
                         </span>
                         <span class="ms-auto fw-bold text-warning">
-                            <?= formatBetrag($ticketPreis) ?> / Platz
+                            <?= formatBetrag($ticketPreis) ?><?= __('seating.per_seat_suffix') ?>
                         </span>
                     </div>
                 </div>
@@ -267,7 +267,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <!-- Legende -->
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center">
-                        <small class="text-muted fw-semibold me-1">Legende:</small>
+                        <small class="text-muted fw-semibold me-1"><?= __('seating.legend_label') ?></small>
                         <span>
                             <span class="legend-dot" style="background:#22c55e;"></span>
                             <small><?= __('seating.legend_free') ?></small>
@@ -310,10 +310,10 @@ include __DIR__ . '/../includes/navbar.php';
                             <!-- Tisch-Header -->
                             <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
                                 <span class="fw-bold small">
-                                    <i class="bi bi-table text-warning me-1"></i>Tisch <?= (int)$tisch['tischnummer'] ?>
+                                    <i class="bi bi-table text-warning me-1"></i><?= __('res.table') ?> <?= (int)$tisch['tischnummer'] ?>
                                 </span>
                                 <span class="badge <?= $tisch['frei'] > 0 ? 'bg-success' : 'bg-danger' ?> small">
-                                    <?= (int)$tisch['frei'] ?> frei
+                                    <?= htmlspecialchars(sprintf(__('seating.table_free'), (int)$tisch['frei'])) ?>
                                 </span>
                             </div>
 
@@ -326,17 +326,17 @@ include __DIR__ . '/../includes/navbar.php';
                                     $isTaken = !$isMine && $sitz['seat_status'] !== 'verfuegbar';
                                 ?>
                                 <?php if ($isMine): ?>
-                                    <span class="seat-chip chip-mine" title="Ihr Platz <?= $snr ?>">
+                                    <span class="seat-chip chip-mine" title="<?= htmlspecialchars(sprintf(__('seating.your_seat_title'), $snr), ENT_QUOTES) ?>">
                                         <?= $snr ?>
                                     </span>
 
                                 <?php elseif ($isTaken): ?>
-                                    <span class="seat-chip chip-taken" title="Platz <?= $snr ?> belegt">
+                                    <span class="seat-chip chip-taken" title="<?= htmlspecialchars(sprintf(__('seating.seat_taken_title'), $snr), ENT_QUOTES) ?>">
                                         <?= $snr ?>
                                     </span>
 
                                 <?php else: ?>
-                                    <label class="seat-label" title="Platz <?= $snr ?> wählen">
+                                    <label class="seat-label" title="<?= htmlspecialchars(sprintf(__('seating.seat_select_title'), $snr), ENT_QUOTES) ?>">
                                         <input type="checkbox"
                                                name="seat_ids[]"
                                                value="<?= $sid ?>"
@@ -357,12 +357,12 @@ include __DIR__ . '/../includes/navbar.php';
                                 </div>
                                 <?php foreach ($eigeneSitzeHier as $es): ?>
                                 <form method="POST" action="/api/cancel_seat.php" class="d-inline"
-                                      data-confirm="<?= htmlspecialchars(sprintf(__('seating.cancel_seat'), (int)$es['sitzplatznummer']), ENT_QUOTES) ?> – Tisch <?= (int)$tisch['tischnummer'] ?>?">
+                                      data-confirm="<?= htmlspecialchars(sprintf(__('seating.cancel_seat'), (int)$es['sitzplatznummer']) . ' ' . sprintf(__('seating.cancel_table_suffix'), (int)$tisch['tischnummer']), ENT_QUOTES) ?>">
                                     <?= csrfField() ?>
                                     <input type="hidden" name="reservation_id" value="<?= (int)$es['reservation_id'] ?>">
                                     <input type="hidden" name="event_id" value="<?= $eventId ?>">
                                     <button type="submit" class="btn btn-outline-danger btn-sm mb-1">
-                                        <i class="bi bi-x-circle me-1"></i>Platz <?= (int)$es['sitzplatznummer'] ?> stornieren
+                                        <i class="bi bi-x-circle me-1"></i><?= htmlspecialchars(sprintf(__('seating.cancel_seat'), (int)$es['sitzplatznummer'])) ?>
                                     </button>
                                 </form>
                                 <?php endforeach; ?>
@@ -397,9 +397,9 @@ include __DIR__ . '/../includes/navbar.php';
                             <span class="badge bg-secondary">
                                 <?php
                                 echo match($zahlungsart) {
-                                    'paypal'       => '<i class="bi bi-paypal me-1"></i>PayPal',
-                                    'ueberweisung' => '<i class="bi bi-bank me-1"></i>Überweisung',
-                                    default        => '<i class="bi bi-cash me-1"></i>Bar',
+                                    'paypal'       => '<i class="bi bi-paypal me-1"></i>' . __('payment.paypal'),
+                                    'ueberweisung' => '<i class="bi bi-bank me-1"></i>' . htmlspecialchars(__('payment.ueberweisung')),
+                                    default        => '<i class="bi bi-cash me-1"></i>' . htmlspecialchars(__('payment.bar')),
                                 };
                                 ?>
                             </span>
@@ -423,7 +423,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <noscript>
                             <p class="small text-muted text-center mt-2">
                                 <i class="bi bi-info-circle me-1"></i>
-                                Wählen Sie Plätze aus und klicken Sie auf den Reservieren-Button.
+                                <?= __('seating.noscript_hint') ?>
                             </p>
                         </noscript>
 
@@ -467,6 +467,7 @@ include __DIR__ . '/../includes/navbar.php';
 $extraScripts = '<script>
 (function() {
     var PREIS = ' . json_encode($ticketPreis) . ';
+    var MSG_SELECT_SEAT = ' . json_encode(__('seating.js_select_seat_alert')) . ';
     var form  = document.getElementById("bookForm");
     if (!form) return;
 
@@ -509,7 +510,7 @@ $extraScripts = '<script>
         var checked = form.querySelectorAll(".seat-input:checked");
         if (checked.length === 0) {
             e.preventDefault();
-            alert("Bitte wählen Sie mindestens einen Sitzplatz aus.");
+            alert(MSG_SELECT_SEAT);
         }
     });
 

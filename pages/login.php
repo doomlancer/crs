@@ -18,16 +18,16 @@ $email   = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF prüfen
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $errors[] = 'Ungültiger Sicherheitstoken. Bitte laden Sie die Seite neu.';
+        $errors[] = __('auth.invalid_csrf');
     } else {
         $email    = trim($_POST['email'] ?? '');
         $passwort = $_POST['passwort'] ?? '';
 
         if (empty($email)) {
-            $errors[] = 'Bitte geben Sie Ihre E-Mail-Adresse ein.';
+            $errors[] = __('auth.email_required');
         }
         if (empty($passwort)) {
-            $errors[] = 'Bitte geben Sie Ihr Passwort ein.';
+            $errors[] = __('auth.password_required');
         }
 
         if (empty($errors)) {
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Nach Login ggf. auf ursprünglich angefragte Seite weiterleiten
                 $redirect = $_SESSION['redirect_after_login'] ?? '/pages/events.php';
                 unset($_SESSION['redirect_after_login']);
-                setFlash('success', 'Willkommen zurück, ' . htmlspecialchars($_SESSION['vorname']) . '!');
+                setFlash('success', sprintf(__('auth.welcome_back'), htmlspecialchars($_SESSION['vorname'])));
                 redirect($redirect);
             } else {
                 $errors[] = $result;
@@ -52,7 +52,7 @@ if (!empty($_SESSION['timeout_message'])) {
     unset($_SESSION['timeout_message']);
 }
 
-$pageTitle  = 'Anmelden';
+$pageTitle  = __('auth.login_title');
 $bodyClass  = 'auth-page bg-dark';
 $extraHead  = '';
 
@@ -85,7 +85,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Anmelden
+                        <i class="bi bi-box-arrow-in-right me-2"></i><?= __('auth.login_title') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -126,8 +126,7 @@ include __DIR__ . '/../includes/header.php';
                         <hr class="my-2">
                         <small class="text-muted">
                             <i class="bi bi-info-circle me-1"></i>
-                            Aus Sicherheitsgründen wird der Zugang nach <?= MAX_LOGIN_VERSUCHE ?> fehlgeschlagenen
-                            Versuchen für <?= LOGIN_SPERRZEIT / 60 ?> Minuten gesperrt.
+                            <?= htmlspecialchars(sprintf(__('auth.lockout_hint'), MAX_LOGIN_VERSUCHE, LOGIN_SPERRZEIT / 60)) ?>
                         </small>
                         <?php endif; ?>
                     </div>
@@ -138,7 +137,7 @@ include __DIR__ . '/../includes/header.php';
 
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
-                                <i class="bi bi-envelope me-1"></i>E-Mail-Adresse
+                                <i class="bi bi-envelope me-1"></i><?= __('auth.email') ?>
                             </label>
                             <input
                                 type="email"
@@ -146,7 +145,7 @@ include __DIR__ . '/../includes/header.php';
                                 name="email"
                                 class="form-control form-control-lg <?= !empty($errors) && !empty($email) ? 'is-invalid' : '' ?>"
                                 value="<?= htmlspecialchars($email) ?>"
-                                placeholder="name@beispiel.de"
+                                placeholder="<?= htmlspecialchars(__('auth.email_placeholder')) ?>"
                                 required
                                 autofocus
                                 autocomplete="email"
@@ -156,10 +155,10 @@ include __DIR__ . '/../includes/header.php';
                         <div class="mb-3">
                             <div class="d-flex justify-content-between align-items-center">
                                 <label for="passwort" class="form-label fw-semibold mb-0">
-                                    <i class="bi bi-lock me-1"></i>Passwort
+                                    <i class="bi bi-lock me-1"></i><?= __('auth.password') ?>
                                 </label>
                                 <a href="/pages/forgot_password.php" class="small text-muted text-decoration-none">
-                                    Passwort vergessen?
+                                    <?= __('auth.forgot_password') ?>
                                 </a>
                             </div>
                             <div class="input-group mt-1">
@@ -168,7 +167,7 @@ include __DIR__ . '/../includes/header.php';
                                     id="passwort"
                                     name="passwort"
                                     class="form-control form-control-lg"
-                                    placeholder="Ihr Passwort"
+                                    placeholder="<?= htmlspecialchars(__('auth.password_placeholder')) ?>"
                                     required
                                     autocomplete="current-password"
                                 >
@@ -176,8 +175,8 @@ include __DIR__ . '/../includes/header.php';
                                     type="button"
                                     class="btn btn-outline-secondary"
                                     id="togglePasswort"
-                                    title="Passwort anzeigen"
-                                    aria-label="Passwort anzeigen/verbergen"
+                                    title="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                                    aria-label="<?= htmlspecialchars(__('auth.toggle_password_aria')) ?>"
                                 >
                                     <i class="bi bi-eye" id="togglePasswortIcon"></i>
                                 </button>
@@ -186,15 +185,15 @@ include __DIR__ . '/../includes/header.php';
 
                         <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-box-arrow-in-right me-2"></i>Anmelden
+                                <i class="bi bi-box-arrow-in-right me-2"></i><?= __('auth.login_button') ?>
                             </button>
                         </div>
                     </form>
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
-                    <span class="text-muted">Noch kein Konto?</span>
+                    <span class="text-muted"><?= __('auth.no_account') ?></span>
                     <a href="/pages/register.php" class="text-warning fw-semibold text-decoration-none ms-1">
-                        Jetzt registrieren <i class="bi bi-arrow-right"></i>
+                        <?= __('auth.register_now') ?> <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
             </div>
@@ -202,7 +201,7 @@ include __DIR__ . '/../includes/header.php';
             <!-- Zurück zur Startseite -->
             <div class="text-center mt-3">
                 <a href="/index.php" class="text-white-50 text-decoration-none small">
-                    <i class="bi bi-arrow-left me-1"></i>Zurück zur Startseite
+                    <i class="bi bi-arrow-left me-1"></i><?= __('auth.back_to_home') ?>
                 </a>
             </div>
 
@@ -211,6 +210,8 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <?php
+$jsShowPw = json_encode(__('auth.show_password_title'));
+$jsHidePw = json_encode(__('auth.hide_password_title'));
 $extraScripts = <<<HTML
 <script>
 // Passwort-Sichtbarkeit umschalten
@@ -220,11 +221,11 @@ document.getElementById('togglePasswort').addEventListener('click', function () 
     if (input.type === 'password') {
         input.type = 'text';
         icon.classList.replace('bi-eye', 'bi-eye-slash');
-        this.title = 'Passwort verbergen';
+        this.title = {$jsHidePw};
     } else {
         input.type = 'password';
         icon.classList.replace('bi-eye-slash', 'bi-eye');
-        this.title = 'Passwort anzeigen';
+        this.title = {$jsShowPw};
     }
 });
 </script>

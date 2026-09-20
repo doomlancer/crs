@@ -100,6 +100,21 @@ include __DIR__ . '/../includes/navbar.php';
                 <button type="button" id="btn-switch" class="btn btn-outline-secondary btn-sm d-none">
                     <i class="bi bi-arrow-repeat me-1"></i>Kamera wechseln
                 </button>
+                <!--
+                    Zweiter Weg, der ohne Kamerastream auskommt: Statt eines
+                    Live-Videos (getUserMedia, braucht zwingend HTTPS) öffnet
+                    dieser Datei-Eingang die Kamera-App des Geräts und liefert
+                    ein einzelnes Foto zurück, das anschließend lokal per
+                    jsQR/BarcodeDetector dekodiert wird. Funktioniert deshalb
+                    auch über reines HTTP im Heimnetz.
+                -->
+                <label for="photo-input" class="btn btn-outline-primary btn-sm mb-0">
+                    <i class="bi bi-camera me-1"></i>Foto aufnehmen &amp; auswerten
+                </label>
+                <input type="file" id="photo-input" accept="image/*" capture="environment" class="d-none">
+            </div>
+            <div class="form-text text-center mt-1">
+                Funktioniert auch ohne https:// – öffnet die Kamera-App des Geräts.
             </div>
         </div>
     </div>
@@ -302,10 +317,27 @@ $extraScripts = <<<'JS'
 
     function startCam() {
         stopCam();
+
+        // window.isSecureContext ist der korrekte Prüfwert (nicht location.protocol
+        // allein – localhost gilt z.B. auch über http als secure context). Ohne
+        // sicheren Kontext existiert navigator.mediaDevices gar nicht erst; das ist
+        // in JEDEM Browser so (Safari, Chrome, Firefox, mobil wie Desktop) und hat
+        // nichts mit dem konkreten Browser oder Gerät zu tun. Deshalb zuerst prüfen
+        // und einen eindeutigen, korrekten Hinweis geben statt "Browser unterstützt
+        // das nicht" – das gab fälschlich dem Browser die Schuld.
+        if (!window.isSecureContext) {
+            status.textContent = 'Live-Scan benötigt eine sichere Verbindung (https://). '
+                + 'Diese Seite läuft über http:// – das lässt sich im Browser nicht '
+                + 'umgehen. Bitte „Foto aufnehmen“ oder die manuelle Eingabe nutzen.';
+            btnStart.classList.add('d-none');
+            return;
+        }
+
         status.textContent = 'Kamera wird gestartet …';
 
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            status.textContent = 'Dieser Browser unterstützt keinen Kamerazugriff. Bitte manuelle Eingabe nutzen.';
+            status.textContent = 'Dieser Browser unterstützt keinen Live-Kamerazugriff. '
+                + 'Bitte „Foto aufnehmen“ oder die manuelle Eingabe nutzen.';
             btnStart.classList.add('d-none');
             return;
         }
@@ -326,15 +358,117 @@ $extraScripts = <<<'JS'
             scanLoop();
         })
         .catch(function (err) {
-            var msg = 'Kamera nicht verfügbar: ' + (err && err.name ? err.name : 'Fehler');
-            if (err && err.name === 'NotAllowedError') {
-                msg = 'Kamerazugriff wurde abgelehnt. Bitte im Browser erlauben und neu starten.';
-            } else if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-                msg = 'Kamera benötigt eine HTTPS-Verbindung. Bitte die Seite über https:// aufrufen '
-                    + 'oder die manuelle Eingabe nutzen.';
+            var name = err && err.name;
+            var msg;
+            if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+                msg = 'Kamerazugriff wurde abgelehnt. Bitte in den Browser-/Website-'
+                    + 'Einstellungen erlauben und die Seite neu laden – oder „Foto '
+                    + 'aufnehmen“ nutzen.';
+            } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+                msg = 'Keine Kamera gefunden. Bitte „Foto aufnehmen“ oder die manuelle '
+                    + 'Eingabe nutzen.';
+            } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+                msg = 'Die Kamera wird gerade von einer anderen App verwendet. Diese '
+                    + 'schließen und erneut versuchen.';
+            } else if (name === 'OverconstrainedError') {
+                msg = 'Diese Kamera unterstützt die angeforderte Auflösung nicht. '
+                    + 'Bitte „Kamera wechseln“ oder „Foto aufnehmen“ versuchen.';
+            } else {
+                msg = 'Kamera nicht verfügbar (' + (name || 'unbekannter Fehler') + '). '
+                    + 'Bitte „Foto aufnehmen“ nutzen.';
             }
             status.textContent = msg;
             btnStart.classList.remove('d-none');
+        });
+    }
+
+    // ─── Foto-Fallback: Standbild statt Live-Stream ───────────────────────
+    // Läuft komplett ohne getUserMedia und damit auch über reines HTTP.
+    // Das Betriebssystem öffnet seine eigene Kamera-App (capture=environment
+    // am <input>) und liefert ein Foto zurück, das wir wie einen einzelnen
+    // Kameraframe behandeln: gleiche Detektorkette (BarcodeDetector, sonst
+    // jsQR) wie im Livescan.
+    var photoInput = document.getElementById('photo-input');
+
+    photoInput.addEventListener('change', function () {
+        var file = photoInput.files && photoInput.files[0];
+        photoInput.value = ''; // dieselbe Datei später erneut auswählbar machen
+        if (file) decodePhoto(file);
+    });
+
+    function decodePhoto(file) {
+        status.textContent = 'Foto wird ausgewertet …';
+        loadImageRespectingOrientation(file)
+            .then(function (img) {
+                var w = img.naturalWidth  || img.width;
+                var h = img.naturalHeight || img.height;
+                if (!w || !h) throw new Error('Bild ohne Abmessungen');
+
+                // Telefonfotos sind oft 3000px+ breit – für jsQR unnötig und
+                // spürbar langsam. Auf eine für QR-Codes ausreichende Kantenlänge
+                // herunterskalieren, ohne die Bildqualität für die Erkennung zu
+                // beeinträchtigen.
+                var maxDim = 1600;
+                var scale  = Math.min(1, maxDim / Math.max(w, h));
+                var cw = Math.max(1, Math.round(w * scale));
+                var ch = Math.max(1, Math.round(h * scale));
+
+                canvas.width  = cw;
+                canvas.height = ch;
+                ctx.drawImage(img, 0, 0, cw, ch);
+
+                if (detector) {
+                    return detector.detect(canvas)
+                        .then(function (codes) { return (codes && codes.length) ? codes[0].rawValue : null; })
+                        .catch(function () { return decodeWithJsQR(cw, ch); });
+                }
+                return decodeWithJsQR(cw, ch);
+            })
+            .then(function (text) {
+                if (text) {
+                    handleCode(text);
+                } else {
+                    status.textContent = 'Kein QR-Code im Foto erkannt. Bitte näher '
+                        + 'heran, gut ausleuchten und erneut versuchen – oder manuell '
+                        + 'eingeben.';
+                }
+            })
+            .catch(function () {
+                status.textContent = 'Foto konnte nicht gelesen werden. Bitte erneut '
+                    + 'versuchen.';
+            });
+    }
+
+    function decodeWithJsQR(w, h) {
+        if (!window.jsQR) return null;
+        var imgData = ctx.getImageData(0, 0, w, h);
+        var code = window.jsQR(imgData.data, w, h, { inversionAttempts: 'attemptBoth' });
+        return code ? code.data : null;
+    }
+
+    // Lädt eine Bilddatei EXIF-Orientierung-korrekt. Smartphone-Kameras
+    // schreiben die Drehung oft nur ins EXIF-Feld, ohne die Pixel selbst zu
+    // drehen – ohne Berücksichtigung landet das Bild auf dem Canvas seitlich
+    // oder auf dem Kopf, und die Erkennung schlägt fehl.
+    // createImageBitmap mit imageOrientation:'from-image' korrigiert das
+    // automatisch (Chrome, Firefox, Safari ≥ 15); ältere Browser fallen auf
+    // ein normales <img>-Element zurück.
+    function loadImageRespectingOrientation(file) {
+        if (window.createImageBitmap) {
+            return createImageBitmap(file, { imageOrientation: 'from-image' })
+                .catch(function () { return createImageBitmap(file); })
+                .catch(function () { return loadViaImgElement(file); });
+        }
+        return loadViaImgElement(file);
+    }
+
+    function loadViaImgElement(file) {
+        return new Promise(function (resolve, reject) {
+            var url = URL.createObjectURL(file);
+            var img = new Image();
+            img.onload  = function () { URL.revokeObjectURL(url); resolve(img); };
+            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Bild konnte nicht geladen werden')); };
+            img.src = url;
         });
     }
 

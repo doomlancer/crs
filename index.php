@@ -11,7 +11,7 @@ if (isset($_GET['logout'])) {
     logoutUser();
 }
 
-$pageTitle = 'Willkommen';
+$pageTitle = __('index.page_title');
 $pdo = getDB();
 
 // Aktive Events laden
@@ -64,20 +64,20 @@ include __DIR__ . '/includes/navbar.php';
                     <p class="lead text-white-50 mb-4">
                         <?= $heroSlogan
                             ? htmlspecialchars($heroSlogan)
-                            : 'Sichern Sie sich Ihren Platz bei den unvergesslichen Veranstaltungen!<br>Einfach online reservieren, bequem bezahlen und den Spaß genießen.'
+                            : __('index.hero_slogan_fallback')
                         ?>
                     </p>
                     <div class="d-flex gap-3 justify-content-center flex-wrap">
                         <a href="/pages/events.php" class="btn btn-warning btn-lg px-4">
-                            <i class="bi bi-calendar-event me-2"></i>Events ansehen
+                            <i class="bi bi-calendar-event me-2"></i><?= __('index.view_events_button') ?>
                         </a>
                         <?php if (!isLoggedIn()): ?>
                         <a href="/pages/register.php" class="btn btn-outline-light btn-lg px-4">
-                            <i class="bi bi-person-plus me-2"></i>Jetzt registrieren
+                            <i class="bi bi-person-plus me-2"></i><?= __('auth.register_now') ?>
                         </a>
                         <?php else: ?>
                         <a href="/pages/tischplan.php" class="btn btn-outline-light btn-lg px-4">
-                            <i class="bi bi-grid-3x3 me-2"></i>Tischplan
+                            <i class="bi bi-grid-3x3 me-2"></i><?= __('nav.seating_plan') ?>
                         </a>
                         <?php endif; ?>
                     </div>
@@ -95,8 +95,8 @@ include __DIR__ . '/includes/navbar.php';
                         <div class="feature-icon mb-3">
                             <i class="bi bi-grid-3x3 text-warning"></i>
                         </div>
-                        <h5 class="fw-bold">Grafischer Tischplan</h5>
-                        <p class="text-muted">Wählen Sie Ihren Wunschtisch visuell aus. Sehen Sie in Echtzeit, welche Plätze noch verfügbar sind.</p>
+                        <h5 class="fw-bold"><?= __('index.feature_seating_title') ?></h5>
+                        <p class="text-muted"><?= __('index.feature_seating_text') ?></p>
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -104,8 +104,8 @@ include __DIR__ . '/includes/navbar.php';
                         <div class="feature-icon mb-3">
                             <i class="bi bi-ticket-perforated text-warning"></i>
                         </div>
-                        <h5 class="fw-bold">Sofort-Buchung</h5>
-                        <p class="text-muted">Reservieren Sie Ihren Platz in wenigen Sekunden und erhalten Sie eine Bestätigungsnummer.</p>
+                        <h5 class="fw-bold"><?= __('index.feature_instant_title') ?></h5>
+                        <p class="text-muted"><?= __('index.feature_instant_text') ?></p>
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -113,8 +113,8 @@ include __DIR__ . '/includes/navbar.php';
                         <div class="feature-icon mb-3">
                             <i class="bi bi-credit-card text-warning"></i>
                         </div>
-                        <h5 class="fw-bold">Flexible Zahlung</h5>
-                        <p class="text-muted">Bezahlen Sie bequem per Bar, Überweisung oder PayPal – ganz nach Ihren Wünschen.</p>
+                        <h5 class="fw-bold"><?= __('index.feature_payment_title') ?></h5>
+                        <p class="text-muted"><?= __('index.feature_payment_text') ?></p>
                     </div>
                 </div>
             </div>
@@ -126,7 +126,7 @@ include __DIR__ . '/includes/navbar.php';
     <section class="py-5">
         <div class="container">
             <h2 class="text-center fw-bold mb-4">
-                <i class="bi bi-calendar-star text-warning me-2"></i>Aktuelle Veranstaltungen
+                <i class="bi bi-calendar-star text-warning me-2"></i><?= __('index.current_events_heading') ?>
             </h2>
             <div class="row g-4">
                 <?php foreach ($aktuelleEvents as $event):
@@ -152,7 +152,7 @@ include __DIR__ . '/includes/navbar.php';
                             </p>
                             <div class="mt-auto">
                                 <div class="d-flex justify-content-between mb-1 small">
-                                    <span>Auslastung</span>
+                                    <span><?= __('events.occupancy') ?></span>
                                     <strong><?= $prozent ?>%</strong>
                                 </div>
                                 <div class="progress mb-3" style="height: 8px;">
@@ -160,13 +160,13 @@ include __DIR__ . '/includes/navbar.php';
                                 </div>
                                 <small class="text-muted">
                                     <i class="bi bi-people"></i>
-                                    <?= $belegt ?> / <?= $gesamt ?> Plätze belegt
+                                    <?= htmlspecialchars(sprintf(__('index.seats_taken_of_total'), $belegt, $gesamt)) ?>
                                 </small>
                             </div>
                         </div>
                         <div class="card-footer bg-transparent">
                             <a href="/pages/tischplan.php?event_id=<?= $event['id'] ?>" class="btn btn-outline-warning w-100">
-                                <i class="bi bi-grid-3x3 me-1"></i>Tischplan anzeigen
+                                <i class="bi bi-grid-3x3 me-1"></i><?= __('index.show_seating_plan_button') ?>
                             </a>
                         </div>
                     </div>
@@ -175,7 +175,7 @@ include __DIR__ . '/includes/navbar.php';
             </div>
             <div class="text-center mt-4">
                 <a href="/pages/events.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-right me-1"></i>Alle Events anzeigen
+                    <i class="bi bi-arrow-right me-1"></i><?= __('index.show_all_events_button') ?>
                 </a>
             </div>
         </div>
@@ -187,19 +187,19 @@ include __DIR__ . '/includes/navbar.php';
         <div class="container text-center">
             <h3 class="fw-bold mb-3">
                 <i class="bi bi-emoji-laughing text-warning me-2"></i>
-                Bereit für Kameruner-Tickets?
+                <?= __('index.cta_heading') ?>
             </h3>
-            <p class="text-muted mb-4">Melden Sie sich an und reservieren Sie Ihren Platz noch heute!</p>
+            <p class="text-muted mb-4"><?= __('index.cta_subtitle') ?></p>
             <?php if (!isLoggedIn()): ?>
             <a href="/pages/register.php" class="btn btn-warning btn-lg me-2">
-                <i class="bi bi-person-plus me-2"></i>Kostenlos registrieren
+                <i class="bi bi-person-plus me-2"></i><?= __('index.cta_register_button') ?>
             </a>
             <a href="/pages/login.php" class="btn btn-outline-light btn-lg">
-                <i class="bi bi-box-arrow-in-right me-2"></i>Anmelden
+                <i class="bi bi-box-arrow-in-right me-2"></i><?= __('auth.login_button') ?>
             </a>
             <?php else: ?>
             <a href="/pages/tischplan.php" class="btn btn-warning btn-lg">
-                <i class="bi bi-grid-3x3 me-2"></i>Jetzt Platz reservieren
+                <i class="bi bi-grid-3x3 me-2"></i><?= __('index.cta_reserve_button') ?>
             </a>
             <?php endif; ?>
         </div>

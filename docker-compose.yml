@@ -30,6 +30,8 @@ services:
       DEBUG_MODE: ${DEBUG_MODE:-false}
       # FORCE_HTTPS=false für lokalen HTTP-Zugriff; true hinter Reverse-Proxy/TLS
       FORCE_HTTPS: ${FORCE_HTTPS:-false}
+      # Nur bei Reverse-Proxy relevant: dessen IP/CIDR, siehe .env.example
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # ── Erst-Admin (nur beim ersten Start verwendet) ──
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

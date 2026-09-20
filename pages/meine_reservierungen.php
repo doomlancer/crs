@@ -48,7 +48,7 @@ $geplant    = count(array_filter($reservierungen, fn($r) => $r['status'] === 'ge
 $eingecheckt = count(array_filter($reservierungen, fn($r) => $r['status'] === 'eingecheckt'));
 $gesamtBetrag = array_sum(array_column($reservierungen, 'betrag'));
 
-$pageTitle = 'Meine Reservierungen';
+$pageTitle = __('res.title');
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';
 ?>
@@ -60,9 +60,9 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row mb-4">
             <div class="col-12">
                 <h2 class="fw-bold">
-                    <i class="bi bi-ticket-perforated text-warning me-2"></i>Meine Reservierungen
+                    <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('res.title') ?>
                 </h2>
-                <p class="text-muted">Alle Ihre Buchungen im Überblick</p>
+                <p class="text-muted"><?= __('res.subtitle') ?></p>
             </div>
         </div>
 
@@ -72,7 +72,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card text-center border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="display-6 fw-bold text-primary"><?= $gesamt ?></div>
-                        <small class="text-muted">Gesamt</small>
+                        <small class="text-muted"><?= __('res.total') ?></small>
                     </div>
                 </div>
             </div>
@@ -80,7 +80,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card text-center border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="display-6 fw-bold text-secondary"><?= $geplant ?></div>
-                        <small class="text-muted">Geplant</small>
+                        <small class="text-muted"><?= __('res.planned') ?></small>
                     </div>
                 </div>
             </div>
@@ -88,7 +88,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card text-center border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="display-6 fw-bold text-success"><?= $eingecheckt ?></div>
-                        <small class="text-muted">Eingecheckt</small>
+                        <small class="text-muted"><?= __('res.checked_in') ?></small>
                     </div>
                 </div>
             </div>
@@ -96,7 +96,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card text-center border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="display-6 fw-bold text-warning"><?= formatBetrag($gesamtBetrag) ?></div>
-                        <small class="text-muted">Gesamtbetrag</small>
+                        <small class="text-muted"><?= __('res.total_amount') ?></small>
                     </div>
                 </div>
             </div>
@@ -106,10 +106,10 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="card border-0 shadow-sm">
             <div class="card-body text-center py-5">
                 <i class="bi bi-calendar-x display-3 text-muted d-block mb-3"></i>
-                <h5 class="text-muted">Noch keine Reservierungen</h5>
-                <p class="text-muted">Sie haben noch keine Plätze reserviert.</p>
+                <h5 class="text-muted"><?= __('res.empty_title') ?></h5>
+                <p class="text-muted"><?= __('res.empty_text') ?></p>
                 <a href="/pages/events.php" class="btn btn-warning">
-                    <i class="bi bi-calendar-event me-2"></i>Events entdecken
+                    <i class="bi bi-calendar-event me-2"></i><?= __('res.discover_events') ?>
                 </a>
             </div>
         </div>
@@ -136,18 +136,18 @@ include __DIR__ . '/../includes/navbar.php';
                                 <th class="ps-3" style="width:42px;">
                                     <?php if ($paypalOffenCount > 1): ?>
                                     <input type="checkbox" id="selectAllPaypal" class="form-check-input"
-                                           title="Alle offenen PayPal-Buchungen auswählen">
+                                           title="<?= htmlspecialchars(__('res.select_all_paypal_title')) ?>">
                                     <?php endif; ?>
                                 </th>
-                                <th>Buchungsnr.</th>
-                                <th>Veranstaltung</th>
-                                <th>Datum</th>
-                                <th>Platz/Ticket</th>
-                                <th>Zahlungsart</th>
-                                <th>Betrag</th>
-                                <th>Buchungsstatus</th>
-                                <th>Zahlungsstatus</th>
-                                <th>Aktionen</th>
+                                <th><?= __('res.booking_number') ?></th>
+                                <th><?= __('res.event') ?></th>
+                                <th><?= __('res.date') ?></th>
+                                <th><?= __('res.seat_ticket_header') ?></th>
+                                <th><?= __('res.payment_method') ?></th>
+                                <th><?= __('res.amount') ?></th>
+                                <th><?= __('res.booking_status') ?></th>
+                                <th><?= __('res.payment_status') ?></th>
+                                <th><?= __('res.actions') ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -171,7 +171,7 @@ include __DIR__ . '/../includes/navbar.php';
                                             type="button"
                                             data-bs-toggle="collapse"
                                             data-bs-target="#qr-<?= $res['id'] ?>"
-                                            title="QR-Code anzeigen">
+                                            title="<?= htmlspecialchars(__('res.show_qr_title')) ?>">
                                         <i class="bi bi-qr-code"></i>
                                     </button>
                                 </td>
@@ -184,11 +184,11 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td>
                                     <?php if ($res['seat_id'] === null): ?>
                                     <span class="badge bg-success">
-                                        <i class="bi bi-ticket-perforated me-1"></i>Freies Ticket
+                                        <i class="bi bi-ticket-perforated me-1"></i><?= __('res.free_ticket_badge') ?>
                                     </span>
                                     <?php else: ?>
                                     <i class="bi bi-grid text-muted me-1"></i>
-                                    Tisch <strong><?= $res['tischnummer'] ?></strong>, Platz <strong><?= $res['sitzplatznummer'] ?></strong>
+                                    <?= sprintf(__('res.table_seat_combo'), (int)$res['tischnummer'], (int)$res['sitzplatznummer']) ?>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -208,13 +208,13 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td>
                                     <?php if ($res['status'] === 'geplant'): ?>
                                     <form method="POST" action="/api/reserve_seat.php"
-                                          data-confirm="Möchten Sie diese Reservierung wirklich stornieren?">
+                                          data-confirm="<?= htmlspecialchars(__('res.cancel_confirm'), ENT_QUOTES) ?>">
                                         <?= csrfField() ?>
                                         <input type="hidden" name="action" value="cancel">
                                         <input type="hidden" name="event_id" value="">
                                         <input type="hidden" name="reservation_id" value="<?= $res['id'] ?>">
                                         <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-x-circle me-1"></i>Stornieren
+                                            <i class="bi bi-x-circle me-1"></i><?= __('res.cancel') ?>
                                         </button>
                                     </form>
                                     <?php else: ?>
@@ -235,7 +235,7 @@ include __DIR__ . '/../includes/navbar.php';
                                         <input type="hidden" name="no_shipping"   value="1">
                                         <input type="hidden" name="lc"            value="DE">
                                         <button type="submit" class="btn btn-primary btn-sm">
-                                            <i class="bi bi-paypal me-1"></i>Bezahlen
+                                            <i class="bi bi-paypal me-1"></i><?= __('res.pay_button') ?>
                                         </button>
                                     </form>
                                     <?php endif; ?>
@@ -246,11 +246,11 @@ include __DIR__ . '/../includes/navbar.php';
                                 <td colspan="10" class="py-1">
                                     <small class="text-muted">
                                         <i class="bi bi-clock me-1"></i>
-                                        Reserviert am: <?= date('d.m.Y H:i', strtotime($res['erstellt_am'])) ?> Uhr
+                                        <?= htmlspecialchars(sprintf(__('res.reserved_at_full'), date('d.m.Y H:i', strtotime($res['erstellt_am'])))) ?>
                                         <?php if (($res['zahlungsart'] ?? '') === 'ueberweisung' && ($res['payment_status'] ?? '') === 'offen'): ?>
                                         | <span class="text-warning fw-bold">
                                             <i class="bi bi-exclamation-triangle me-1"></i>
-                                            Bitte überweisen Sie <?= formatBetrag($betrag) ?> mit Verwendungszweck: <?= htmlspecialchars($res['buchungsnummer']) ?>
+                                            <?= sprintf(__('res.transfer_hint'), formatBetrag($betrag), htmlspecialchars($res['buchungsnummer'])) ?>
                                         </span>
                                         <?php endif; ?>
                                     </small>
@@ -259,7 +259,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <tr class="collapse" id="qr-<?= $res['id'] ?>">
                                 <td colspan="10" class="bg-white text-center py-3">
                                     <div class="d-inline-block text-center p-3 border rounded shadow-sm">
-                                        <?= qrCodeImg(ticketPayload($res['buchungsnummer']), 170, 'QR-Code ' . $res['buchungsnummer']) ?>
+                                        <?= qrCodeImg(ticketPayload($res['buchungsnummer']), 170, sprintf(__('res.qr_alt'), $res['buchungsnummer'])) ?>
                                         <div class="mt-2">
                                             <code class="fs-6 fw-bold text-primary"><?= htmlspecialchars($res['buchungsnummer']) ?></code><br>
                                             <small class="text-muted"><?= htmlspecialchars($res['event_name']) ?> · <?= formatDatum($res['event_datum']) ?></small>
@@ -275,19 +275,21 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
 
         <!-- Sticky PayPal Multi-Zahlungs-Bar (erscheint wenn ≥1 Checkbox aktiv) -->
-        <div id="paypal-bar" class="d-none position-fixed bottom-0 start-0 end-0 bg-dark text-white shadow-lg px-3 py-2 d-flex align-items-center justify-content-between flex-wrap gap-2" style="z-index:1050;">
+        <div id="paypal-bar" class="d-none position-fixed bottom-0 start-0 end-0 bg-dark text-white shadow-lg px-3 py-2 d-flex align-items-center justify-content-between flex-wrap gap-2" style="z-index:1050;"
+             data-label-singular="<?= htmlspecialchars(__('res.booking_singular')) ?>"
+             data-label-plural="<?= htmlspecialchars(__('res.booking_plural')) ?>">
             <div class="d-flex align-items-center gap-3">
                 <i class="bi bi-paypal fs-4 text-primary"></i>
                 <div>
                     <div class="fw-bold">
-                        <span id="bar-count">0 Buchungen</span> ausgewählt
+                        <span id="bar-count">0 <?= __('res.booking_plural') ?></span> <?= __('res.selected_suffix') ?>
                     </div>
-                    <div class="small text-white-50">Gesamt: <strong id="bar-total" class="text-white">0,00 €</strong></div>
+                    <div class="small text-white-50"><?= __('res.total') ?>: <strong id="bar-total" class="text-white">0,00 €</strong></div>
                 </div>
             </div>
             <div class="d-flex gap-2 align-items-center">
                 <button type="button" class="btn btn-sm btn-outline-light" id="bar-clear">
-                    <i class="bi bi-x me-1"></i>Auswahl aufheben
+                    <i class="bi bi-x me-1"></i><?= __('res.clear_selection') ?>
                 </button>
                 <!-- PayPal-Formular wird per JS dynamisch befüllt und abgesendet -->
                 <form id="paypal-multi-form" action="<?= $paypalUrl ?>" method="post" target="_blank">
@@ -299,7 +301,7 @@ include __DIR__ . '/../includes/navbar.php';
                     <input type="hidden" name="no_shipping"   value="1">
                     <input type="hidden" name="lc"            value="DE">
                     <button type="submit" id="bar-pay-btn" class="btn btn-primary">
-                        <i class="bi bi-paypal me-2"></i>Jetzt mit PayPal bezahlen
+                        <i class="bi bi-paypal me-2"></i><?= __('res.pay_with_paypal') ?>
                     </button>
                 </form>
             </div>
@@ -311,17 +313,17 @@ include __DIR__ . '/../includes/navbar.php';
         <!-- Warteliste -->
         <div class="card border-0 shadow-sm mt-4">
             <div class="card-header bg-info text-white fw-bold">
-                <i class="bi bi-hourglass-split me-2"></i>Meine Wartelisten-Einträge
+                <i class="bi bi-hourglass-split me-2"></i><?= __('res.waitlist_title') ?>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-secondary">
                             <tr>
-                                <th>Veranstaltung</th>
-                                <th>Datum</th>
-                                <th>Eingetragen am</th>
-                                <th>Aktion</th>
+                                <th><?= __('res.event') ?></th>
+                                <th><?= __('res.date') ?></th>
+                                <th><?= __('res.added_at') ?></th>
+                                <th><?= __('res.waitlist_action_header') ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -329,15 +331,15 @@ include __DIR__ . '/../includes/navbar.php';
                             <tr>
                                 <td><?= htmlspecialchars($wl['event_name']) ?></td>
                                 <td><span class="badge bg-warning text-dark"><?= formatDatum($wl['event_datum']) ?></span></td>
-                                <td><small class="text-muted"><?= date('d.m.Y H:i', strtotime($wl['erstellt_am'])) ?> Uhr</small></td>
+                                <td><small class="text-muted"><?= htmlspecialchars(sprintf(__('general.datetime_uhr'), date('d.m.Y H:i', strtotime($wl['erstellt_am'])))) ?></small></td>
                                 <td>
                                     <form method="POST" action="/api/join_waitlist.php"
-                                          data-confirm="Von der Warteliste entfernen?">
+                                          data-confirm="<?= htmlspecialchars(__('res.waitlist_confirm'), ENT_QUOTES) ?>">
                                         <?= csrfField() ?>
                                         <input type="hidden" name="action" value="leave">
                                         <input type="hidden" name="event_id" value="<?= $wl['event_id'] ?>">
                                         <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-x-circle me-1"></i>Entfernen
+                                            <i class="bi bi-x-circle me-1"></i><?= __('res.waitlist_remove') ?>
                                         </button>
                                     </form>
                                 </td>
@@ -354,17 +356,17 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row mt-4 g-3">
             <div class="col-md-4">
                 <a href="/pages/events.php" class="btn btn-outline-warning w-100">
-                    <i class="bi bi-calendar-event me-2"></i>Neue Reservierung
+                    <i class="bi bi-calendar-event me-2"></i><?= __('res.new_reservation') ?>
                 </a>
             </div>
             <div class="col-md-4">
                 <a href="/pages/tischplan.php" class="btn btn-outline-secondary w-100">
-                    <i class="bi bi-grid-3x3 me-2"></i>Zum Tischplan
+                    <i class="bi bi-grid-3x3 me-2"></i><?= __('res.to_seating_plan') ?>
                 </a>
             </div>
             <div class="col-md-4">
                 <a href="/pages/profil.php" class="btn btn-outline-primary w-100">
-                    <i class="bi bi-person me-2"></i>Mein Profil
+                    <i class="bi bi-person me-2"></i><?= __('res.my_profile') ?>
                 </a>
             </div>
         </div>
@@ -399,7 +401,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         bar.classList.remove('d-none');
         var total = checked.reduce(function(s, cb) { return s + parseFloat(cb.dataset.amount); }, 0);
-        barCount.textContent = checked.length + (checked.length === 1 ? ' Buchung' : ' Buchungen');
+        var label = checked.length === 1 ? bar.dataset.labelSingular : bar.dataset.labelPlural;
+        barCount.textContent = checked.length + ' ' + label;
         barTotal.textContent = total.toFixed(2).replace('.', ',') + ' €';
 
         // Synchronise "Alle auswählen" Indeterminate-Zustand

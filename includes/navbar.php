@@ -1,7 +1,13 @@
 <?php
 $currentPage = basename($_SERVER['PHP_SELF']);
 $currentLang = getCurrentLang();
-$currentUrl  = htmlspecialchars($_SERVER['REQUEST_URI']);
+// urlencode() allein reicht für den href-Wert – das Ergebnis enthält nur
+// %XX-Folgen und alphanumerische Zeichen, keine HTML-Sonderzeichen mehr.
+// Ein vorheriges htmlspecialchars() hätte "&" zu "&amp;" gemacht, das
+// urlencode() dann nochmal zu "%26amp%3B" verschlüsselt hätte – der
+// Sprachumschalter riss dadurch bei Seiten mit mehreren Query-Parametern
+// (z.B. "?event_id=3&suche=meier") alle Parameter ab dem zweiten weg.
+$currentUrl  = urlencode($_SERVER['REQUEST_URI']);
 
 $_navLogoFile = getSetting('app_logo', '');
 $_navLogoSrc  = ($_navLogoFile && file_exists(UPLOAD_DIR . $_navLogoFile))
@@ -32,7 +38,7 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                 <li class="nav-item">
                     <a class="nav-link <?= $currentPage === 'events.php' ? 'active' : '' ?>"
                        href="/pages/events.php">
-                        <i class="bi bi-calendar-event"></i> Events
+                        <i class="bi bi-calendar-event"></i> <?= __('nav.events') ?>
                     </a>
                 </li>
 
@@ -40,13 +46,13 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                 <li class="nav-item">
                     <a class="nav-link <?= $currentPage === 'tischplan.php' ? 'active' : '' ?>"
                        href="/pages/tischplan.php">
-                        <i class="bi bi-grid-3x3"></i> Tischplan
+                        <i class="bi bi-grid-3x3"></i> <?= __('nav.seating_plan') ?>
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link <?= $currentPage === 'meine_reservierungen.php' ? 'active' : '' ?>"
                        href="/pages/meine_reservierungen.php">
-                        <i class="bi bi-ticket-perforated"></i> Meine Reservierungen
+                        <i class="bi bi-ticket-perforated"></i> <?= __('nav.my_reservations') ?>
                     </a>
                 </li>
 
@@ -54,23 +60,23 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle <?= str_starts_with($currentPage, 'kassierer_') ? 'active' : '' ?>"
                        href="#" data-bs-toggle="dropdown">
-                        <i class="bi bi-cash-register"></i> Kassierer
+                        <i class="bi bi-cash-register"></i> <?= __('nav.cashier') ?>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark">
                         <li><a class="dropdown-item" href="/pages/kassierer_dashboard.php">
-                            <i class="bi bi-speedometer2"></i> Dashboard
+                            <i class="bi bi-speedometer2"></i> <?= __('nav.dashboard') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/kassierer_guestlist.php">
-                            <i class="bi bi-people"></i> Gästeliste
+                            <i class="bi bi-people"></i> <?= __('nav.guestlist') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/kassierer_statistiken.php">
-                            <i class="bi bi-bar-chart"></i> Statistiken
+                            <i class="bi bi-bar-chart"></i> <?= __('nav.statistics') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/kassierer_scan.php">
-                            <i class="bi bi-qr-code-scan"></i> QR-Scanner
+                            <i class="bi bi-qr-code-scan"></i> <?= __('nav.qr_scanner') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/event_live_dashboard.php">
-                            <i class="bi bi-broadcast"></i> Live-Übersicht
+                            <i class="bi bi-broadcast"></i> <?= __('nav.live_overview') ?>
                         </a></li>
                     </ul>
                 </li>
@@ -80,30 +86,33 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle <?= str_starts_with($currentPage, 'admin_') ? 'active' : '' ?>"
                        href="#" data-bs-toggle="dropdown">
-                        <i class="bi bi-gear"></i> Admin
+                        <i class="bi bi-gear"></i> <?= __('nav.admin') ?>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark">
                         <li><a class="dropdown-item" href="/pages/admin_dashboard.php">
-                            <i class="bi bi-speedometer2"></i> Dashboard
+                            <i class="bi bi-speedometer2"></i> <?= __('nav.dashboard') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_events.php">
-                            <i class="bi bi-calendar-plus"></i> Event-Management
+                            <i class="bi bi-calendar-plus"></i> <?= __('nav.event_management') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_reservierungen.php">
-                            <i class="bi bi-ticket-perforated-fill"></i> Reservierungen
+                            <i class="bi bi-ticket-perforated-fill"></i> <?= __('nav.reservations') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_users.php">
-                            <i class="bi bi-people-fill"></i> Benutzer
+                            <i class="bi bi-people-fill"></i> <?= __('nav.users') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_statistiken.php">
-                            <i class="bi bi-graph-up"></i> Statistiken
+                            <i class="bi bi-graph-up"></i> <?= __('nav.statistics') ?>
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_auditlog.php">
-                            <i class="bi bi-shield-check"></i> Audit-Log
+                            <i class="bi bi-shield-check"></i> <?= __('nav.audit_log') ?>
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/pages/admin_einstellungen.php">
-                            <i class="bi bi-palette"></i> Design & Einstellungen
+                            <i class="bi bi-palette"></i> <?= __('nav.design_settings') ?>
+                        </a></li>
+                        <li><a class="dropdown-item" href="/pages/admin_uebersetzungen.php">
+                            <i class="bi bi-translate"></i> <?= __('nav.translations') ?>
                         </a></li>
                     </ul>
                 </li>
@@ -118,19 +127,19 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                         <i class="bi bi-person-circle"></i>
                         <?= htmlspecialchars($_SESSION['vorname']) ?>
                         <?php if (hasRole('admin')): ?>
-                            <span class="badge bg-danger ms-1">Admin</span>
+                            <span class="badge bg-danger ms-1"><?= __('nav.admin') ?></span>
                         <?php elseif (hasRole('kassierer')): ?>
-                            <span class="badge bg-warning text-dark ms-1">Kassierer</span>
+                            <span class="badge bg-warning text-dark ms-1"><?= __('nav.cashier') ?></span>
                         <?php endif; ?>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                         <li><a class="dropdown-item" href="/pages/profil.php">
-                            <i class="bi bi-person"></i> Mein Profil
+                            <i class="bi bi-person"></i> <?= __('nav.my_profile') ?>
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                             <a class="dropdown-item text-danger" href="/includes/auth.php?action=logout">
-                                <i class="bi bi-box-arrow-right"></i> Abmelden
+                                <i class="bi bi-box-arrow-right"></i> <?= __('nav.logout') ?>
                             </a>
                         </li>
                     </ul>
@@ -151,13 +160,13 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
 
                 <!-- Sprachumschalter -->
                 <li class="nav-item ms-2">
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Sprache">
-                        <a href="/api/set_lang.php?lang=de&redirect=<?= urlencode($currentUrl) ?>"
+                    <div class="btn-group btn-group-sm" role="group" aria-label="<?= htmlspecialchars(__('nav.language_aria')) ?>">
+                        <a href="/api/set_lang.php?lang=de&redirect=<?= $currentUrl ?>"
                            class="btn <?= $currentLang === 'de' ? 'btn-warning' : 'btn-outline-secondary' ?>"
-                           title="Deutsch">DE</a>
-                        <a href="/api/set_lang.php?lang=en&redirect=<?= urlencode($currentUrl) ?>"
+                           title="<?= htmlspecialchars(__('general.language_de')) ?>">DE</a>
+                        <a href="/api/set_lang.php?lang=en&redirect=<?= $currentUrl ?>"
                            class="btn <?= $currentLang === 'en' ? 'btn-warning' : 'btn-outline-secondary' ?>"
-                           title="English">EN</a>
+                           title="<?= htmlspecialchars(__('general.language_en')) ?>">EN</a>
                     </div>
                 </li>
             </ul>

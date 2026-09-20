@@ -82,12 +82,12 @@ include __DIR__ . '/../includes/navbar.php';
                         <i class="bi bi-calendar3 me-1"></i><?= formatDatum($selectedEvent['datum']) ?>
                     </span>
                     <span class="badge bg-success">
-                        <i class="bi bi-ticket-perforated me-1"></i>Freier Einlass
+                        <i class="bi bi-ticket-perforated me-1"></i><?= __('ticket.free_entry') ?>
                     </span>
                 </div>
                 <div class="text-end">
                     <div class="fs-4 fw-bold text-warning"><?= formatBetrag($eventPreis) ?></div>
-                    <small class="text-muted">pro Ticket</small>
+                    <small class="text-muted"><?= __('ticket.per_ticket_suffix') ?></small>
                 </div>
             </div>
             <?php if (!empty($selectedEvent['beschreibung'])): ?>
@@ -98,7 +98,7 @@ include __DIR__ . '/../includes/navbar.php';
             <div class="mt-3">
                 <?php $pct = $maxGaeste > 0 ? round(($verkauft / $maxGaeste) * 100) : 0; ?>
                 <div class="d-flex justify-content-between small mb-1">
-                    <span class="text-muted">Tickets verkauft</span>
+                    <span class="text-muted"><?= __('ticket.sold_label') ?></span>
                     <strong><?= $verkauft ?> / <?= $maxGaeste ?></strong>
                 </div>
                 <div class="progress" style="height:6px;">
@@ -107,11 +107,11 @@ include __DIR__ . '/../includes/navbar.php';
                 </div>
                 <?php if ($ausverkauft): ?>
                 <div class="alert alert-danger mt-2 mb-0 py-2 small">
-                    <i class="bi bi-x-circle me-1"></i>Diese Veranstaltung ist ausverkauft.
+                    <i class="bi bi-x-circle me-1"></i><?= __('ticket.sold_out_message') ?>
                 </div>
                 <?php elseif ($restTickets !== null && $restTickets <= 20): ?>
                 <div class="alert alert-warning mt-2 mb-0 py-2 small">
-                    <i class="bi bi-exclamation-triangle me-1"></i>Nur noch <strong><?= $restTickets ?></strong> Ticket(s) verfügbar!
+                    <i class="bi bi-exclamation-triangle me-1"></i><?= sprintf(__('ticket.few_remaining'), $restTickets) ?>
                 </div>
                 <?php endif; ?>
             </div>
@@ -123,7 +123,7 @@ include __DIR__ . '/../includes/navbar.php';
     <?php if (!$ausverkauft): ?>
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header fw-semibold">
-            <i class="bi bi-ticket-perforated text-warning me-2"></i>Tickets reservieren
+            <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('ticket.reserve_header') ?>
         </div>
         <div class="card-body">
             <form method="POST" action="/api/reserve_seat.php">
@@ -133,7 +133,7 @@ include __DIR__ . '/../includes/navbar.php';
 
                 <div class="row g-3 align-items-end">
                     <div class="col-sm-4">
-                        <label class="form-label fw-semibold small">Anzahl Tickets</label>
+                        <label class="form-label fw-semibold small"><?= __('ticket.quantity_label') ?></label>
                         <div class="input-group">
                             <button type="button" class="btn btn-outline-secondary" id="btn-minus">
                                 <i class="bi bi-dash"></i>
@@ -148,22 +148,22 @@ include __DIR__ . '/../includes/navbar.php';
                         </div>
                     </div>
                     <div class="col-sm-4">
-                        <label class="form-label fw-semibold small">Gesamtpreis</label>
+                        <label class="form-label fw-semibold small"><?= __('ticket.total_price_label') ?></label>
                         <div class="form-control-plaintext fw-bold fs-5 text-warning" id="price-display">
                             <?= formatBetrag($eventPreis) ?>
                         </div>
                     </div>
                     <div class="col-sm-4">
                         <button type="submit" class="btn btn-warning w-100 fw-bold">
-                            <i class="bi bi-cart-check me-1"></i>Jetzt reservieren
+                            <i class="bi bi-cart-check me-1"></i><?= __('seating.reserve') ?>
                         </button>
                     </div>
                 </div>
 
                 <p class="text-muted small mt-3 mb-0">
                     <i class="bi bi-info-circle me-1"></i>
-                    Zahlungsart: <strong><?= zahlungsartLabel($_SESSION['zahlungsart'] ?? 'bar') ?></strong>
-                    (aus Ihrem Profil) · Sie erhalten eine Buchungsnummer pro Ticket.
+                    <?= __('ticket.payment_label') ?> <strong><?= zahlungsartLabel($_SESSION['zahlungsart'] ?? 'bar') ?></strong>
+                    <?= __('ticket.payment_hint_suffix') ?>
                 </p>
             </form>
         </div>
@@ -174,7 +174,7 @@ include __DIR__ . '/../includes/navbar.php';
     <?php if (!empty($meineTickets)): ?>
     <div class="card border-0 shadow-sm">
         <div class="card-header fw-semibold">
-            <i class="bi bi-check2-circle text-success me-2"></i>Meine Tickets für diese Veranstaltung
+            <i class="bi bi-check2-circle text-success me-2"></i><?= __('ticket.my_tickets_header') ?>
         </div>
         <div class="card-body p-0">
             <ul class="list-group list-group-flush">
@@ -193,7 +193,7 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
         <div class="card-footer bg-transparent">
             <a href="/pages/meine_reservierungen.php" class="btn btn-outline-primary btn-sm">
-                <i class="bi bi-list-ul me-1"></i>Alle Reservierungen ansehen
+                <i class="bi bi-list-ul me-1"></i><?= __('ticket.view_all_reservations') ?>
             </a>
         </div>
     </div>

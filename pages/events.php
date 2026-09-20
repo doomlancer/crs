@@ -30,7 +30,7 @@ $stmt = $pdo->prepare(
 $stmt->execute();
 $events = $stmt->fetchAll();
 
-$pageTitle = 'Veranstaltungen';
+$pageTitle = __('events.heading');
 $bodyClass = 'bg-light';
 $extraHead = '';
 
@@ -45,20 +45,19 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row align-items-center mb-4">
             <div class="col">
                 <h1 class="fw-bold mb-1">
-                    <i class="bi bi-calendar-event text-warning me-2"></i>Veranstaltungen
+                    <i class="bi bi-calendar-event text-warning me-2"></i><?= __('events.heading') ?>
                 </h1>
                 <p class="text-muted mb-0">
-                    Alle verfügbaren Veranstaltungen auf einen Blick.
+                    <?= __('events.subtitle') ?>
                     <?php if (!isLoggedIn()): ?>
-                        <a href="/pages/register.php" class="text-warning fw-semibold">Registrieren Sie sich</a>,
-                        um Plätze zu reservieren.
+                        <a href="/pages/register.php" class="text-warning fw-semibold"><?= __('events.register_link') ?></a><?= __('events.register_suffix') ?>
                     <?php endif; ?>
                 </p>
             </div>
             <?php if (isLoggedIn()): ?>
             <div class="col-auto">
                 <a href="/pages/meine_reservierungen.php" class="btn btn-outline-warning">
-                    <i class="bi bi-ticket-perforated me-1"></i>Meine Reservierungen
+                    <i class="bi bi-ticket-perforated me-1"></i><?= __('events.my_reservations') ?>
                 </a>
             </div>
             <?php endif; ?>
@@ -71,9 +70,9 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="card border-0 shadow-sm text-center py-5">
             <div class="card-body">
                 <i class="bi bi-calendar-x display-3 text-muted mb-3 d-block"></i>
-                <h4 class="text-muted">Keine Veranstaltungen geplant</h4>
+                <h4 class="text-muted"><?= __('events.empty_title') ?></h4>
                 <p class="text-muted mb-0">
-                    Aktuell sind keine Veranstaltungen eingetragen. Schauen Sie später wieder vorbei!
+                    <?= __('events.empty_text') ?>
                 </p>
             </div>
         </div>
@@ -93,7 +92,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm text-center h-100">
                     <div class="card-body py-3">
                         <div class="display-6 fw-bold text-warning"><?= $totalEvents ?></div>
-                        <div class="small text-muted">Veranstaltungen</div>
+                        <div class="small text-muted"><?= __('events.stat_total') ?></div>
                     </div>
                 </div>
             </div>
@@ -101,7 +100,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm text-center h-100">
                     <div class="card-body py-3">
                         <div class="display-6 fw-bold text-success"><?= count($activeEvents) ?></div>
-                        <div class="small text-muted">Aktiv</div>
+                        <div class="small text-muted"><?= __('events.stat_active') ?></div>
                     </div>
                 </div>
             </div>
@@ -109,7 +108,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm text-center h-100">
                     <div class="card-body py-3">
                         <div class="display-6 fw-bold text-primary"><?= $totalSeats ?></div>
-                        <div class="small text-muted">Plätze gesamt</div>
+                        <div class="small text-muted"><?= __('events.stat_seats_total') ?></div>
                     </div>
                 </div>
             </div>
@@ -117,7 +116,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm text-center h-100">
                     <div class="card-body py-3">
                         <div class="display-6 fw-bold text-info"><?= $freeSeats ?></div>
-                        <div class="small text-muted">Freie Plätze</div>
+                        <div class="small text-muted"><?= __('events.stat_seats_free') ?></div>
                     </div>
                 </div>
             </div>
@@ -135,15 +134,15 @@ include __DIR__ . '/../includes/navbar.php';
                 if ($prozent >= 90) {
                     $barColor   = 'bg-danger';
                     $badgeColor = 'danger';
-                    $auslastungText = 'Fast ausgebucht';
+                    $auslastungText = __('events.occ_almost_full');
                 } elseif ($prozent >= 70) {
                     $barColor   = 'bg-warning';
                     $badgeColor = 'warning';
-                    $auslastungText = 'Stark gebucht';
+                    $auslastungText = __('events.occ_busy');
                 } else {
                     $barColor   = 'bg-success';
                     $badgeColor = 'success';
-                    $auslastungText = 'Verfügbar';
+                    $auslastungText = __('events.occ_available');
                 }
 
                 // Ist das Event in der Vergangenheit?
@@ -183,19 +182,19 @@ include __DIR__ . '/../includes/navbar.php';
                             ?>
                         </p>
                         <?php else: ?>
-                        <p class="card-text text-muted small flex-grow-1 fst-italic">Keine Beschreibung vorhanden.</p>
+                        <p class="card-text text-muted small flex-grow-1 fst-italic"><?= __('events.no_description') ?></p>
                         <?php endif; ?>
 
                         <!-- Auslastungs-Anzeige -->
                         <div class="mt-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <span class="small fw-semibold text-muted">
-                                    <i class="bi bi-people me-1"></i>Auslastung
+                                    <i class="bi bi-people me-1"></i><?= __('events.occupancy') ?>
                                 </span>
                                 <div class="d-flex align-items-center gap-2">
                                     <span class="small text-muted"><?= $prozent ?>%</span>
                                     <span class="badge bg-<?= $badgeColor ?> <?= $badgeColor === 'warning' ? 'text-dark' : '' ?> small">
-                                        <?= $auslastungText ?>
+                                        <?= htmlspecialchars($auslastungText) ?>
                                     </span>
                                 </div>
                             </div>
@@ -203,7 +202,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <!-- Fortschrittsbalken -->
                             <div class="progress mb-2" style="height: 10px; border-radius: 6px;" role="progressbar"
                                  aria-valuenow="<?= $prozent ?>" aria-valuemin="0" aria-valuemax="100"
-                                 aria-label="Auslastung <?= $prozent ?>%">
+                                 aria-label="<?= htmlspecialchars(sprintf(__('events.occupancy_aria'), $prozent)) ?>">
                                 <div class="progress-bar <?= $barColor ?> rounded-pill"
                                      style="width: <?= $prozent ?>%; transition: width 0.6s ease;">
                                 </div>
@@ -212,20 +211,20 @@ include __DIR__ . '/../includes/navbar.php';
                             <!-- Platz-Info -->
                             <div class="d-flex justify-content-between">
                                 <small class="text-muted">
-                                    <i class="bi bi-check-circle text-success me-1"></i><?= $frei ?> frei
+                                    <i class="bi bi-check-circle text-success me-1"></i><?= htmlspecialchars(sprintf(__('events.free'), $frei)) ?>
                                 </small>
                                 <small class="text-muted">
-                                    <i class="bi bi-x-circle text-danger me-1"></i><?= $belegt ?> belegt
+                                    <i class="bi bi-x-circle text-danger me-1"></i><?= htmlspecialchars(sprintf(__('events.taken'), $belegt)) ?>
                                 </small>
                                 <small class="text-muted">
-                                    <i class="bi bi-grid me-1"></i><?= $gesamt ?> gesamt
+                                    <i class="bi bi-grid me-1"></i><?= htmlspecialchars(sprintf(__('events.total_seats'), $gesamt)) ?>
                                 </small>
                             </div>
                         </div>
 
                         <!-- Ticket-Preis -->
                         <div class="mt-3 p-2 bg-light rounded d-flex justify-content-between align-items-center">
-                            <small class="text-muted"><i class="bi bi-ticket me-1"></i>Ticketpreis</small>
+                            <small class="text-muted"><i class="bi bi-ticket me-1"></i><?= __('events.ticket_price') ?></small>
                             <span class="fw-bold text-dark"><?= formatBetrag(TICKET_PREIS) ?></span>
                         </div>
 
@@ -235,28 +234,28 @@ include __DIR__ . '/../includes/navbar.php';
                     <div class="card-footer bg-transparent border-0 pb-3 px-3">
                         <?php if ($isPast): ?>
                             <button class="btn btn-outline-secondary w-100" disabled>
-                                <i class="bi bi-clock-history me-1"></i>Veranstaltung beendet
+                                <i class="bi bi-clock-history me-1"></i><?= __('events.ended') ?>
                             </button>
 
                         <?php elseif ($isVoll): ?>
                             <button class="btn btn-outline-danger w-100" disabled>
-                                <i class="bi bi-x-circle me-1"></i>Ausgebucht
+                                <i class="bi bi-x-circle me-1"></i><?= __('events.sold_out') ?>
                             </button>
 
                         <?php elseif ($event['status'] !== 'aktiv'): ?>
                             <button class="btn btn-outline-secondary w-100" disabled>
-                                <i class="bi bi-hourglass me-1"></i>Noch nicht buchbar
+                                <i class="bi bi-hourglass me-1"></i><?= __('events.not_bookable_yet') ?>
                             </button>
 
                         <?php elseif (isLoggedIn()): ?>
                             <a href="/pages/tischplan.php?event_id=<?= (int)$event['id'] ?>"
                                class="btn btn-warning w-100 fw-semibold">
-                                <i class="bi bi-grid-3x3 me-1"></i>Reservieren
+                                <i class="bi bi-grid-3x3 me-1"></i><?= __('events.reserve') ?>
                             </a>
 
                         <?php else: ?>
                             <a href="/pages/login.php" class="btn btn-outline-warning w-100 fw-semibold">
-                                <i class="bi bi-box-arrow-in-right me-1"></i>Anmelden zum Reservieren
+                                <i class="bi bi-box-arrow-in-right me-1"></i><?= __('events.login_to_reserve') ?>
                             </a>
                         <?php endif; ?>
                     </div>
@@ -271,17 +270,17 @@ include __DIR__ . '/../includes/navbar.php';
             <div class="row g-2 align-items-center">
                 <div class="col-auto">
                     <small class="text-muted fw-semibold">
-                        <i class="bi bi-info-circle me-1"></i>Auslastung:
+                        <i class="bi bi-info-circle me-1"></i><?= __('events.legend_label') ?>
                     </small>
                 </div>
                 <div class="col-auto">
-                    <span class="badge bg-success">unter 70% – Verfügbar</span>
+                    <span class="badge bg-success"><?= __('events.legend_available') ?></span>
                 </div>
                 <div class="col-auto">
-                    <span class="badge bg-warning text-dark">70–89% – Stark gebucht</span>
+                    <span class="badge bg-warning text-dark"><?= __('events.legend_busy') ?></span>
                 </div>
                 <div class="col-auto">
-                    <span class="badge bg-danger">ab 90% – Fast ausgebucht</span>
+                    <span class="badge bg-danger"><?= __('events.legend_almost_full') ?></span>
                 </div>
             </div>
         </div>

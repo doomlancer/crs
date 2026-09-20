@@ -55,7 +55,7 @@ $formData = [
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'profil') {
 
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $profilErrors[] = 'Ungültiger Sicherheitstoken. Bitte laden Sie die Seite neu.';
+        $profilErrors[] = __('auth.invalid_csrf');
     } else {
         $vorname     = trim($_POST['vorname']     ?? '');
         $nachname    = trim($_POST['nachname']    ?? '');
@@ -69,16 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         // Validierung
         if (strlen($vorname) < 2 || strlen($vorname) > 100) {
-            $profilErrors[] = 'Vorname muss zwischen 2 und 100 Zeichen lang sein.';
+            $profilErrors[] = __('profil.firstname_length');
         }
         if (strlen($nachname) < 2 || strlen($nachname) > 100) {
-            $profilErrors[] = 'Nachname muss zwischen 2 und 100 Zeichen lang sein.';
+            $profilErrors[] = __('profil.lastname_length');
         }
         if ($adresse !== '' && strlen($adresse) > 255) {
-            $profilErrors[] = 'Die Adresse darf maximal 255 Zeichen lang sein.';
+            $profilErrors[] = __('profil.address_max_length');
         }
         if (!in_array($zahlungsart, ['bar', 'ueberweisung', 'paypal'], true)) {
-            $profilErrors[] = 'Bitte wählen Sie eine gültige Zahlungsart.';
+            $profilErrors[] = __('auth.invalid_payment_method');
         }
 
         if (empty($profilErrors)) {
@@ -105,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
             logAudit('PROFIL_AKTUALISIERT', 'users', $userId, 'Profildaten geändert');
 
-            setFlash('success', 'Ihre Profildaten wurden erfolgreich aktualisiert.');
+            setFlash('success', __('profil.update_success'));
             redirect('/pages/profil.php');
         }
     }
@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'passwort') {
 
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $pwErrors[] = 'Ungültiger Sicherheitstoken. Bitte laden Sie die Seite neu.';
+        $pwErrors[] = __('auth.invalid_csrf');
     } else {
         $altesPasswort  = $_POST['altes_passwort']   ?? '';
         $neuesPasswort  = $_POST['neues_passwort']   ?? '';
@@ -125,13 +125,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         // Validierung
         if (empty($altesPasswort)) {
-            $pwErrors[] = 'Bitte geben Sie Ihr aktuelles Passwort ein.';
+            $pwErrors[] = __('profil.current_password_required');
         }
         if (strlen($neuesPasswort) < 8) {
-            $pwErrors[] = 'Das neue Passwort muss mindestens 8 Zeichen lang sein.';
+            $pwErrors[] = __('profil.new_password_min_length');
         }
         if ($neuesPasswort !== $neuesPasswort2) {
-            $pwErrors[] = 'Die neuen Passwörter stimmen nicht überein.';
+            $pwErrors[] = __('profil.new_password_mismatch');
         }
 
         if (empty($pwErrors)) {
@@ -141,9 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $row = $stmtPw->fetch();
 
             if (!$row || !password_verify($altesPasswort, $row['passwort'])) {
-                $pwErrors[] = 'Das aktuelle Passwort ist falsch.';
+                $pwErrors[] = __('profil.current_password_wrong');
             } elseif ($altesPasswort === $neuesPasswort) {
-                $pwErrors[] = 'Das neue Passwort darf nicht identisch mit dem aktuellen Passwort sein.';
+                $pwErrors[] = __('profil.new_password_same_as_old');
             } else {
                 $neuerHash  = password_hash($neuesPasswort, PASSWORD_BCRYPT, ['cost' => 12]);
                 $pwZeitpunkt = date('Y-m-d H:i:s');
@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
                 logAudit('PASSWORT_GEAENDERT', 'users', $userId, 'Passwort selbst geändert');
 
-                setFlash('success', 'Ihr Passwort wurde erfolgreich geändert.');
+                setFlash('success', __('profil.password_change_success'));
                 redirect('/pages/profil.php');
             }
         }
@@ -166,12 +166,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 $zahlungsarten = [
-    'bar'          => 'Bar',
-    'ueberweisung' => 'Überweisung',
-    'paypal'       => 'PayPal',
+    'bar'          => __('payment.bar'),
+    'ueberweisung' => __('payment.ueberweisung'),
+    'paypal'       => __('payment.paypal'),
 ];
 
-$pageTitle = 'Mein Profil';
+$pageTitle = __('nav.my_profile');
 $bodyClass = 'bg-light';
 $extraHead = '';
 
@@ -186,16 +186,16 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="row align-items-center mb-4">
             <div class="col">
                 <h1 class="fw-bold mb-1">
-                    <i class="bi bi-person-circle text-warning me-2"></i>Mein Profil
+                    <i class="bi bi-person-circle text-warning me-2"></i><?= __('nav.my_profile') ?>
                 </h1>
                 <p class="text-muted mb-0">
-                    Verwalten Sie Ihre persönlichen Daten und Einstellungen.
+                    <?= __('profil.subtitle') ?>
                 </p>
             </div>
             <div class="col-auto">
                 <a href="/pages/meine_reservierungen.php" class="btn btn-outline-warning">
                     <i class="bi bi-ticket-perforated me-1"></i>
-                    Meine Reservierungen
+                    <?= __('res.title') ?>
                     <?php if ($aktiveReservierungen > 0): ?>
                         <span class="badge bg-warning text-dark ms-1"><?= $aktiveReservierungen ?></span>
                     <?php endif; ?>
@@ -228,9 +228,9 @@ include __DIR__ . '/../includes/navbar.php';
                         <div class="mb-3">
                             <?php
                             $rolleMap = [
-                                'admin'     => ['danger',  'bi-shield-fill', 'Administrator'],
-                                'kassierer' => ['warning', 'bi-cash-register', 'Kassierer'],
-                                'user'      => ['secondary','bi-person',       'Benutzer'],
+                                'admin'     => ['danger',  'bi-shield-fill', __('profil.role_admin')],
+                                'kassierer' => ['warning', 'bi-cash-register', __('nav.cashier')],
+                                'user'      => ['secondary','bi-person',       __('profil.role_user')],
                             ];
                             [$rColor, $rIcon, $rLabel] = $rolleMap[$user['rolle']] ?? ['secondary', 'bi-person', ucfirst($user['rolle'])];
                             ?>
@@ -244,13 +244,13 @@ include __DIR__ . '/../includes/navbar.php';
                         <div class="row text-center g-0">
                             <div class="col-6 border-end">
                                 <div class="fw-bold text-warning fs-4"><?= $aktiveReservierungen ?></div>
-                                <div class="small text-muted">Reservierungen</div>
+                                <div class="small text-muted"><?= __('profil.stat_reservations_label') ?></div>
                             </div>
                             <div class="col-6">
                                 <div class="fw-bold text-secondary fs-5">
                                     <?= htmlspecialchars($zahlungsarten[$user['zahlungsart']] ?? ucfirst($user['zahlungsart'])) ?>
                                 </div>
-                                <div class="small text-muted">Zahlungsart</div>
+                                <div class="small text-muted"><?= __('res.payment_method') ?></div>
                             </div>
                         </div>
 
@@ -264,7 +264,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <hr>
                         <p class="small text-muted mb-0">
                             <i class="bi bi-calendar-check me-1"></i>
-                            Mitglied seit <?= formatDatum($user['erstellt_am']) ?>
+                            <?= htmlspecialchars(sprintf(__('profil.member_since'), formatDatum($user['erstellt_am']))) ?>
                         </p>
                     </div>
                 </div>
@@ -272,17 +272,17 @@ include __DIR__ . '/../includes/navbar.php';
                 <!-- Schnelllinks -->
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-dark text-white fw-semibold border-0">
-                        <i class="bi bi-lightning me-1"></i>Schnellzugriff
+                        <i class="bi bi-lightning me-1"></i><?= __('profil.quick_access_header') ?>
                     </div>
                     <div class="list-group list-group-flush rounded-bottom">
                         <a href="/pages/events.php" class="list-group-item list-group-item-action py-3">
-                            <i class="bi bi-calendar-event text-warning me-2"></i>Veranstaltungen ansehen
+                            <i class="bi bi-calendar-event text-warning me-2"></i><?= __('profil.view_events_link') ?>
                         </a>
                         <a href="/pages/meine_reservierungen.php" class="list-group-item list-group-item-action py-3">
-                            <i class="bi bi-ticket-perforated text-warning me-2"></i>Meine Reservierungen
+                            <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('res.title') ?>
                         </a>
                         <a href="/includes/auth.php?action=logout" class="list-group-item list-group-item-action py-3 text-danger">
-                            <i class="bi bi-box-arrow-right me-2"></i>Abmelden
+                            <i class="bi bi-box-arrow-right me-2"></i><?= __('nav.logout') ?>
                         </a>
                     </div>
                 </div>
@@ -298,7 +298,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header bg-warning text-dark border-0 py-3">
                         <h5 class="mb-0 fw-bold">
-                            <i class="bi bi-pencil-square me-2"></i>Persönliche Daten
+                            <i class="bi bi-pencil-square me-2"></i><?= __('profil.personal_data_header') ?>
                         </h5>
                     </div>
                     <div class="card-body p-4">
@@ -306,7 +306,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <?php if (!empty($profilErrors)): ?>
                         <div class="alert alert-danger alert-dismissible" role="alert">
                             <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            <strong>Bitte korrigieren Sie folgende Fehler:</strong>
+                            <strong><?= __('auth.fix_errors_prefix') ?></strong>
                             <ul class="mb-0 mt-2 ps-3">
                                 <?php foreach ($profilErrors as $err): ?>
                                     <li><?= htmlspecialchars($err) ?></li>
@@ -325,7 +325,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Vorname -->
                                 <div class="col-sm-6">
                                     <label for="vorname" class="form-label fw-semibold">
-                                        <i class="bi bi-person me-1"></i>Vorname <span class="text-danger">*</span>
+                                        <i class="bi bi-person me-1"></i><?= __('auth.firstname_label') ?> <span class="text-danger">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -338,13 +338,13 @@ include __DIR__ . '/../includes/navbar.php';
                                         maxlength="100"
                                         autocomplete="given-name"
                                     >
-                                    <div class="invalid-feedback">Mindestens 2 Zeichen erforderlich.</div>
+                                    <div class="invalid-feedback"><?= __('auth.min_2_chars_feedback') ?></div>
                                 </div>
 
                                 <!-- Nachname -->
                                 <div class="col-sm-6">
                                     <label for="nachname" class="form-label fw-semibold">
-                                        Nachname <span class="text-danger">*</span>
+                                        <?= __('auth.lastname_label') ?> <span class="text-danger">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -357,13 +357,13 @@ include __DIR__ . '/../includes/navbar.php';
                                         maxlength="100"
                                         autocomplete="family-name"
                                     >
-                                    <div class="invalid-feedback">Mindestens 2 Zeichen erforderlich.</div>
+                                    <div class="invalid-feedback"><?= __('auth.min_2_chars_feedback') ?></div>
                                 </div>
 
                                 <!-- E-Mail (nur anzeigen, nicht änderbar) -->
                                 <div class="col-12">
                                     <label class="form-label fw-semibold">
-                                        <i class="bi bi-envelope me-1"></i>E-Mail-Adresse
+                                        <i class="bi bi-envelope me-1"></i><?= __('auth.email') ?>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -379,15 +379,14 @@ include __DIR__ . '/../includes/navbar.php';
                                     </div>
                                     <div class="form-text text-muted">
                                         <i class="bi bi-info-circle me-1"></i>
-                                        Die E-Mail-Adresse kann nicht geändert werden.
-                                        Kontaktieren Sie den Administrator für Änderungen.
+                                        <?= __('profil.email_readonly_hint') ?>
                                     </div>
                                 </div>
 
                                 <!-- Zahlungsart -->
                                 <div class="col-sm-6">
                                     <label for="zahlungsart" class="form-label fw-semibold">
-                                        <i class="bi bi-credit-card me-1"></i>Zahlungsart <span class="text-danger">*</span>
+                                        <i class="bi bi-credit-card me-1"></i><?= __('res.payment_method') ?> <span class="text-danger">*</span>
                                     </label>
                                     <select
                                         id="zahlungsart"
@@ -402,14 +401,14 @@ include __DIR__ . '/../includes/navbar.php';
                                         </option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <div class="invalid-feedback">Bitte wählen Sie eine Zahlungsart.</div>
+                                    <div class="invalid-feedback"><?= __('auth.select_payment_feedback') ?></div>
                                 </div>
 
                                 <!-- Adresse (optional) -->
                                 <div class="col-sm-6">
                                     <label for="adresse" class="form-label fw-semibold">
-                                        <i class="bi bi-geo-alt me-1"></i>Adresse
-                                        <span class="text-muted fw-normal small">(optional)</span>
+                                        <i class="bi bi-geo-alt me-1"></i><?= __('auth.address_label') ?>
+                                        <span class="text-muted fw-normal small"><?= __('general.optional') ?></span>
                                     </label>
                                     <input
                                         type="text"
@@ -418,7 +417,7 @@ include __DIR__ . '/../includes/navbar.php';
                                         class="form-control"
                                         value="<?= htmlspecialchars($formData['adresse']) ?>"
                                         maxlength="255"
-                                        placeholder="Musterstraße 1, 12345 Musterstadt"
+                                        placeholder="<?= htmlspecialchars(__('auth.address_placeholder')) ?>"
                                         autocomplete="street-address"
                                     >
                                 </div>
@@ -426,14 +425,14 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Pflichtfeld-Hinweis -->
                                 <div class="col-12">
                                     <p class="text-muted small mb-0">
-                                        <span class="text-danger">*</span> Pflichtfelder
+                                        <span class="text-danger">*</span> <?= __('general.required_fields_note') ?>
                                     </p>
                                 </div>
 
                                 <!-- Submit -->
                                 <div class="col-12">
                                     <button type="submit" class="btn btn-warning fw-bold px-4">
-                                        <i class="bi bi-check-lg me-2"></i>Daten speichern
+                                        <i class="bi bi-check-lg me-2"></i><?= __('profil.save_data_button') ?>
                                     </button>
                                 </div>
 
@@ -449,7 +448,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card border-0 shadow-sm">
                     <div class="card-header bg-dark text-white border-0 py-3">
                         <h5 class="mb-0 fw-bold">
-                            <i class="bi bi-key me-2"></i>Passwort ändern
+                            <i class="bi bi-key me-2"></i><?= __('profil.change_password_header') ?>
                         </h5>
                     </div>
                     <div class="card-body p-4">
@@ -457,7 +456,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <?php if (!empty($pwErrors)): ?>
                         <div class="alert alert-danger alert-dismissible" role="alert">
                             <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                            <strong>Bitte korrigieren Sie folgende Fehler:</strong>
+                            <strong><?= __('auth.fix_errors_prefix') ?></strong>
                             <ul class="mb-0 mt-2 ps-3">
                                 <?php foreach ($pwErrors as $err): ?>
                                     <li><?= htmlspecialchars($err) ?></li>
@@ -470,12 +469,13 @@ include __DIR__ . '/../includes/navbar.php';
                         <div class="alert alert-info d-flex align-items-start py-2 mb-4" role="alert">
                             <i class="bi bi-shield-lock me-2 flex-shrink-0 mt-1"></i>
                             <small>
-                                Aus Sicherheitsgründen müssen Sie Ihr aktuelles Passwort eingeben.
-                                Das neue Passwort muss mindestens <strong>8 Zeichen</strong> lang sein.
+                                <?= __('profil.password_change_notice') ?>
                             </small>
                         </div>
 
-                        <form method="POST" action="" novalidate autocomplete="off" id="pwForm">
+                        <form method="POST" action="" novalidate autocomplete="off" id="pwForm"
+                              data-show-password="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                              data-hide-password="<?= htmlspecialchars(__('auth.hide_password_title')) ?>">
                             <?= csrfField() ?>
                             <input type="hidden" name="action" value="passwort">
 
@@ -484,7 +484,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Aktuelles Passwort -->
                                 <div class="col-12">
                                     <label for="altes_passwort" class="form-label fw-semibold">
-                                        <i class="bi bi-lock me-1"></i>Aktuelles Passwort <span class="text-danger">*</span>
+                                        <i class="bi bi-lock me-1"></i><?= __('profil.current_password_label') ?> <span class="text-danger">*</span>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -492,13 +492,13 @@ include __DIR__ . '/../includes/navbar.php';
                                             id="altes_passwort"
                                             name="altes_passwort"
                                             class="form-control <?= !empty($pwErrors) ? 'is-invalid' : '' ?>"
-                                            placeholder="Aktuelles Passwort eingeben"
+                                            placeholder="<?= htmlspecialchars(__('profil.current_password_placeholder')) ?>"
                                             required
                                             autocomplete="current-password"
                                         >
                                         <button type="button" class="btn btn-outline-secondary toggle-pw-btn"
-                                                data-target="altes_passwort" title="Passwort anzeigen"
-                                                aria-label="Passwort anzeigen/verbergen">
+                                                data-target="altes_passwort" title="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                                                aria-label="<?= htmlspecialchars(__('auth.toggle_password_aria')) ?>">
                                             <i class="bi bi-eye"></i>
                                         </button>
                                     </div>
@@ -507,7 +507,7 @@ include __DIR__ . '/../includes/navbar.php';
                                 <!-- Neues Passwort -->
                                 <div class="col-sm-6">
                                     <label for="neues_passwort" class="form-label fw-semibold">
-                                        <i class="bi bi-lock-fill me-1"></i>Neues Passwort <span class="text-danger">*</span>
+                                        <i class="bi bi-lock-fill me-1"></i><?= __('auth.new_password_label') ?> <span class="text-danger">*</span>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -515,32 +515,38 @@ include __DIR__ . '/../includes/navbar.php';
                                             id="neues_passwort"
                                             name="neues_passwort"
                                             class="form-control"
-                                            placeholder="Min. 8 Zeichen"
+                                            placeholder="<?= htmlspecialchars(__('auth.password_placeholder_min8')) ?>"
                                             required
                                             minlength="8"
                                             autocomplete="new-password"
                                         >
                                         <button type="button" class="btn btn-outline-secondary toggle-pw-btn"
-                                                data-target="neues_passwort" title="Passwort anzeigen"
-                                                aria-label="Passwort anzeigen/verbergen">
+                                                data-target="neues_passwort" title="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                                                aria-label="<?= htmlspecialchars(__('auth.toggle_password_aria')) ?>">
                                             <i class="bi bi-eye"></i>
                                         </button>
                                     </div>
 
                                     <!-- Passwortstärke-Anzeige -->
-                                    <div class="mt-2" id="pw-strength-bar" style="display:none;">
+                                    <div class="mt-2" id="pw-strength-bar" style="display:none;"
+                                         data-label-0="<?= htmlspecialchars(__('profil.pw_very_weak')) ?>"
+                                         data-label-1="<?= htmlspecialchars(__('profil.pw_weak')) ?>"
+                                         data-label-2="<?= htmlspecialchars(__('profil.pw_medium')) ?>"
+                                         data-label-3="<?= htmlspecialchars(__('profil.pw_good')) ?>"
+                                         data-label-4="<?= htmlspecialchars(__('profil.pw_very_strong')) ?>"
+                                         data-label-5="<?= htmlspecialchars(__('profil.pw_excellent')) ?>">
                                         <div class="progress" style="height: 6px;">
                                             <div class="progress-bar" id="pw-strength-fill" style="width: 0%;"></div>
                                         </div>
                                         <small id="pw-strength-label" class="text-muted"></small>
                                     </div>
-                                    <div class="form-text">Mindestens 8 Zeichen.</div>
+                                    <div class="form-text"><?= __('auth.min_8_chars_hint') ?></div>
                                 </div>
 
                                 <!-- Neues Passwort bestätigen -->
                                 <div class="col-sm-6">
                                     <label for="neues_passwort2" class="form-label fw-semibold">
-                                        Passwort bestätigen <span class="text-danger">*</span>
+                                        <?= __('auth.confirm_password_label') ?> <span class="text-danger">*</span>
                                     </label>
                                     <div class="input-group">
                                         <input
@@ -548,33 +554,33 @@ include __DIR__ . '/../includes/navbar.php';
                                             id="neues_passwort2"
                                             name="neues_passwort2"
                                             class="form-control"
-                                            placeholder="Wiederholen"
+                                            placeholder="<?= htmlspecialchars(__('auth.repeat_placeholder')) ?>"
                                             required
                                             minlength="8"
                                             autocomplete="new-password"
                                         >
                                         <button type="button" class="btn btn-outline-secondary toggle-pw-btn"
-                                                data-target="neues_passwort2" title="Passwort anzeigen"
-                                                aria-label="Passwort anzeigen/verbergen">
+                                                data-target="neues_passwort2" title="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                                                aria-label="<?= htmlspecialchars(__('auth.toggle_password_aria')) ?>">
                                             <i class="bi bi-eye"></i>
                                         </button>
                                     </div>
                                     <div class="invalid-feedback" id="pw-match-feedback">
-                                        Die Passwörter stimmen nicht überein.
+                                        <?= __('auth.password_mismatch') ?>
                                     </div>
                                 </div>
 
                                 <!-- Pflichtfeld-Hinweis -->
                                 <div class="col-12">
                                     <p class="text-muted small mb-0">
-                                        <span class="text-danger">*</span> Pflichtfelder
+                                        <span class="text-danger">*</span> <?= __('general.required_fields_note') ?>
                                     </p>
                                 </div>
 
                                 <!-- Submit -->
                                 <div class="col-12">
                                     <button type="submit" class="btn btn-dark fw-bold px-4">
-                                        <i class="bi bi-key me-2"></i>Passwort ändern
+                                        <i class="bi bi-key me-2"></i><?= __('profil.change_password_header') ?>
                                     </button>
                                 </div>
 
@@ -597,6 +603,12 @@ $extraScripts = <<<'HTML'
     'use strict';
 
     // ── Passwort-Sichtbarkeit umschalten ──────────────────────────────────
+    // Übersetzte Titel kommen aus data-Attributen am Formular (Nowdoc hier
+    // unten interpoliert keine PHP-Variablen).
+    var pwFormEl  = document.getElementById('pwForm');
+    var showPwTxt = pwFormEl ? pwFormEl.dataset.showPassword : 'Show password';
+    var hidePwTxt = pwFormEl ? pwFormEl.dataset.hidePassword : 'Hide password';
+
     document.querySelectorAll('.toggle-pw-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var targetId = this.dataset.target;
@@ -605,11 +617,11 @@ $extraScripts = <<<'HTML'
             if (input.type === 'password') {
                 input.type = 'text';
                 icon.classList.replace('bi-eye', 'bi-eye-slash');
-                this.title = 'Passwort verbergen';
+                this.title = hidePwTxt;
             } else {
                 input.type = 'password';
                 icon.classList.replace('bi-eye-slash', 'bi-eye');
-                this.title = 'Passwort anzeigen';
+                this.title = showPwTxt;
             }
         });
     });
@@ -640,13 +652,14 @@ $extraScripts = <<<'HTML'
             strengthBar.style.display = 'block';
             var score = calcStrength(pw);
             var pct   = Math.min(100, score * 20);
+            var d     = strengthBar.dataset;
             var map   = [
-                ['bg-danger',  'text-danger',  'Sehr schwach'],
-                ['bg-danger',  'text-danger',  'Schwach'],
-                ['bg-warning', 'text-warning', 'Mittel'],
-                ['bg-info',    'text-info',    'Gut'],
-                ['bg-success', 'text-success', 'Sehr stark'],
-                ['bg-success', 'text-success', 'Ausgezeichnet'],
+                ['bg-danger',  'text-danger',  d.label0],
+                ['bg-danger',  'text-danger',  d.label1],
+                ['bg-warning', 'text-warning', d.label2],
+                ['bg-info',    'text-info',    d.label3],
+                ['bg-success', 'text-success', d.label4],
+                ['bg-success', 'text-success', d.label5],
             ];
             var entry = map[score] || map[0];
             strengthFill.style.width = pct + '%';

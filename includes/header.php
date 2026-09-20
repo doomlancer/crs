@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="<?= htmlspecialchars(getCurrentLang()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="<?= htmlspecialchars(APP_NAME) ?> - Tischreservierungen online">
+    <meta name="description" content="<?= htmlspecialchars(APP_NAME . __('header.meta_description_suffix')) ?>">
     <title><?= htmlspecialchars($pageTitle ?? APP_NAME) ?> | <?= htmlspecialchars(APP_NAME) ?></title>
     <!-- Bootstrap + Icons: lokal ausgeliefert, damit die App auch ohne
          Internetverbindung (Veranstaltungsort!) vollständig funktioniert. -->

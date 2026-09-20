@@ -21,16 +21,16 @@ $formData     = [
 ];
 
 $zahlungsarten = [
-    'bar'          => 'Bar',
-    'ueberweisung' => 'Überweisung',
-    'paypal'       => 'PayPal',
+    'bar'          => __('payment.bar'),
+    'ueberweisung' => __('payment.ueberweisung'),
+    'paypal'       => __('payment.paypal'), // Markenname, wird nicht übersetzt
 ];
 
 // POST-Handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF prüfen
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $errors[] = 'Ungültiger Sicherheitstoken. Bitte laden Sie die Seite neu.';
+        $errors[] = __('auth.invalid_csrf');
     } else {
         // Formulardaten übernehmen (für Wiederanzeige)
         $formData['vorname']     = trim($_POST['vorname']     ?? '');
@@ -44,22 +44,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Clientseitige Vor-Validierung
         if (strlen($formData['vorname']) < 2) {
-            $errors[] = 'Vorname muss mindestens 2 Zeichen lang sein.';
+            $errors[] = __('auth.firstname_min_length');
         }
         if (strlen($formData['nachname']) < 2) {
-            $errors[] = 'Nachname muss mindestens 2 Zeichen lang sein.';
+            $errors[] = __('auth.lastname_min_length');
         }
         if (empty($formData['email']) || !filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
+            $errors[] = __('auth.invalid_email');
         }
         if (strlen($passwort) < 8) {
-            $errors[] = 'Das Passwort muss mindestens 8 Zeichen lang sein.';
+            $errors[] = __('auth.password_min_length');
         }
         if ($passwort !== $passwort2) {
-            $errors[] = 'Die Passwörter stimmen nicht überein.';
+            $errors[] = __('auth.password_mismatch');
         }
         if (!array_key_exists($formData['zahlungsart'], $zahlungsarten)) {
-            $errors[] = 'Bitte wählen Sie eine gültige Zahlungsart.';
+            $errors[] = __('auth.invalid_payment_method');
         }
 
         if (empty($errors)) {
@@ -77,10 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Auto-Login nach erfolgreicher Registrierung
                 $loginResult = loginUser($formData['email'], $passwort);
                 if ($loginResult === true) {
-                    setFlash('success', 'Willkommen! Ihr Konto wurde erfolgreich erstellt.');
+                    setFlash('success', __('auth.registration_welcome'));
                     redirect('/pages/events.php');
                 } else {
-                    setFlash('success', 'Registrierung erfolgreich! Bitte melden Sie sich an.');
+                    setFlash('success', __('auth.registration_success_login'));
                     redirect('/pages/login.php');
                 }
             } else {
@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Registrieren';
+$pageTitle = __('nav.register');
 $bodyClass = 'auth-page bg-dark';
 $extraHead = '';
 
@@ -114,7 +114,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-person-plus me-2"></i>Konto erstellen
+                        <i class="bi bi-person-plus me-2"></i><?= __('auth.create_account_header') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -124,7 +124,7 @@ include __DIR__ . '/../includes/header.php';
                     <?php if (!empty($errors)): ?>
                     <div class="alert alert-danger alert-dismissible" role="alert">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        <strong>Bitte korrigieren Sie folgende Fehler:</strong>
+                        <strong><?= __('auth.fix_errors_prefix') ?></strong>
                         <ul class="mb-0 mt-2 ps-3">
                             <?php foreach ($errors as $err): ?>
                                 <li><?= htmlspecialchars($err) ?></li>
@@ -141,7 +141,7 @@ include __DIR__ . '/../includes/header.php';
                         <div class="row g-3 mb-3">
                             <div class="col-sm-6">
                                 <label for="vorname" class="form-label fw-semibold">
-                                    <i class="bi bi-person me-1"></i>Vorname <span class="text-danger">*</span>
+                                    <i class="bi bi-person me-1"></i><?= __('auth.firstname_label') ?> <span class="text-danger">*</span>
                                 </label>
                                 <input
                                     type="text"
@@ -149,18 +149,18 @@ include __DIR__ . '/../includes/header.php';
                                     name="vorname"
                                     class="form-control <?= (!empty($errors) && strlen($formData['vorname']) < 2) ? 'is-invalid' : '' ?>"
                                     value="<?= htmlspecialchars($formData['vorname']) ?>"
-                                    placeholder="Max"
+                                    placeholder="<?= htmlspecialchars(__('auth.firstname_placeholder')) ?>"
                                     required
                                     minlength="2"
                                     maxlength="100"
                                     autofocus
                                     autocomplete="given-name"
                                 >
-                                <div class="invalid-feedback">Mindestens 2 Zeichen erforderlich.</div>
+                                <div class="invalid-feedback"><?= __('auth.min_2_chars_feedback') ?></div>
                             </div>
                             <div class="col-sm-6">
                                 <label for="nachname" class="form-label fw-semibold">
-                                    Nachname <span class="text-danger">*</span>
+                                    <?= __('auth.lastname_label') ?> <span class="text-danger">*</span>
                                 </label>
                                 <input
                                     type="text"
@@ -168,20 +168,20 @@ include __DIR__ . '/../includes/header.php';
                                     name="nachname"
                                     class="form-control <?= (!empty($errors) && strlen($formData['nachname']) < 2) ? 'is-invalid' : '' ?>"
                                     value="<?= htmlspecialchars($formData['nachname']) ?>"
-                                    placeholder="Mustermann"
+                                    placeholder="<?= htmlspecialchars(__('auth.lastname_placeholder')) ?>"
                                     required
                                     minlength="2"
                                     maxlength="100"
                                     autocomplete="family-name"
                                 >
-                                <div class="invalid-feedback">Mindestens 2 Zeichen erforderlich.</div>
+                                <div class="invalid-feedback"><?= __('auth.min_2_chars_feedback') ?></div>
                             </div>
                         </div>
 
                         <!-- E-Mail -->
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
-                                <i class="bi bi-envelope me-1"></i>E-Mail-Adresse <span class="text-danger">*</span>
+                                <i class="bi bi-envelope me-1"></i><?= __('auth.email') ?> <span class="text-danger">*</span>
                             </label>
                             <input
                                 type="email"
@@ -189,19 +189,19 @@ include __DIR__ . '/../includes/header.php';
                                 name="email"
                                 class="form-control <?= (!empty($errors) && !filter_var($formData['email'], FILTER_VALIDATE_EMAIL)) ? 'is-invalid' : '' ?>"
                                 value="<?= htmlspecialchars($formData['email']) ?>"
-                                placeholder="name@beispiel.de"
+                                placeholder="<?= htmlspecialchars(__('auth.email_placeholder')) ?>"
                                 required
                                 maxlength="255"
                                 autocomplete="email"
                             >
-                            <div class="invalid-feedback">Bitte eine gültige E-Mail-Adresse eingeben.</div>
+                            <div class="invalid-feedback"><?= __('auth.email_invalid_feedback') ?></div>
                         </div>
 
                         <!-- Passwort -->
                         <div class="row g-3 mb-3">
                             <div class="col-sm-6">
                                 <label for="passwort" class="form-label fw-semibold">
-                                    <i class="bi bi-lock me-1"></i>Passwort <span class="text-danger">*</span>
+                                    <i class="bi bi-lock me-1"></i><?= __('auth.password') ?> <span class="text-danger">*</span>
                                 </label>
                                 <div class="input-group">
                                     <input
@@ -209,7 +209,7 @@ include __DIR__ . '/../includes/header.php';
                                         id="passwort"
                                         name="passwort"
                                         class="form-control"
-                                        placeholder="Min. 8 Zeichen"
+                                        placeholder="<?= htmlspecialchars(__('auth.password_placeholder_min8')) ?>"
                                         required
                                         minlength="8"
                                         autocomplete="new-password"
@@ -218,17 +218,17 @@ include __DIR__ . '/../includes/header.php';
                                         type="button"
                                         class="btn btn-outline-secondary toggle-pw"
                                         data-target="passwort"
-                                        title="Passwort anzeigen"
-                                        aria-label="Passwort anzeigen/verbergen"
+                                        title="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                                        aria-label="<?= htmlspecialchars(__('auth.toggle_password_aria')) ?>"
                                     >
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
-                                <div class="form-text">Mindestens 8 Zeichen.</div>
+                                <div class="form-text"><?= __('auth.min_8_chars_hint') ?></div>
                             </div>
                             <div class="col-sm-6">
                                 <label for="passwort2" class="form-label fw-semibold">
-                                    Passwort bestätigen <span class="text-danger">*</span>
+                                    <?= __('auth.confirm_password_label') ?> <span class="text-danger">*</span>
                                 </label>
                                 <div class="input-group">
                                     <input
@@ -236,7 +236,7 @@ include __DIR__ . '/../includes/header.php';
                                         id="passwort2"
                                         name="passwort2"
                                         class="form-control"
-                                        placeholder="Wiederholen"
+                                        placeholder="<?= htmlspecialchars(__('auth.repeat_placeholder')) ?>"
                                         required
                                         minlength="8"
                                         autocomplete="new-password"
@@ -245,20 +245,20 @@ include __DIR__ . '/../includes/header.php';
                                         type="button"
                                         class="btn btn-outline-secondary toggle-pw"
                                         data-target="passwort2"
-                                        title="Passwort anzeigen"
-                                        aria-label="Passwort anzeigen/verbergen"
+                                        title="<?= htmlspecialchars(__('auth.show_password_title')) ?>"
+                                        aria-label="<?= htmlspecialchars(__('auth.toggle_password_aria')) ?>"
                                     >
                                         <i class="bi bi-eye"></i>
                                     </button>
                                 </div>
-                                <div class="invalid-feedback" id="pw-match-error">Die Passwörter stimmen nicht überein.</div>
+                                <div class="invalid-feedback" id="pw-match-error"><?= __('auth.password_mismatch') ?></div>
                             </div>
                         </div>
 
                         <!-- Zahlungsart -->
                         <div class="mb-3">
                             <label for="zahlungsart" class="form-label fw-semibold">
-                                <i class="bi bi-credit-card me-1"></i>Bevorzugte Zahlungsart <span class="text-danger">*</span>
+                                <i class="bi bi-credit-card me-1"></i><?= __('auth.preferred_payment_label') ?> <span class="text-danger">*</span>
                             </label>
                             <select
                                 id="zahlungsart"
@@ -267,7 +267,7 @@ include __DIR__ . '/../includes/header.php';
                                 required
                             >
                                 <option value="" disabled <?= $formData['zahlungsart'] === '' ? 'selected' : '' ?>>
-                                    Bitte wählen…
+                                    <?= __('auth.please_choose') ?>
                                 </option>
                                 <?php foreach ($zahlungsarten as $value => $label): ?>
                                 <option value="<?= htmlspecialchars($value) ?>"
@@ -276,14 +276,14 @@ include __DIR__ . '/../includes/header.php';
                                 </option>
                                 <?php endforeach; ?>
                             </select>
-                            <div class="invalid-feedback">Bitte wählen Sie eine Zahlungsart.</div>
+                            <div class="invalid-feedback"><?= __('auth.select_payment_feedback') ?></div>
                         </div>
 
                         <!-- Adresse (optional) -->
                         <div class="mb-4">
                             <label for="adresse" class="form-label fw-semibold">
-                                <i class="bi bi-geo-alt me-1"></i>Adresse
-                                <span class="text-muted fw-normal">(optional)</span>
+                                <i class="bi bi-geo-alt me-1"></i><?= __('auth.address_label') ?>
+                                <span class="text-muted fw-normal"><?= __('general.optional') ?></span>
                             </label>
                             <input
                                 type="text"
@@ -291,7 +291,7 @@ include __DIR__ . '/../includes/header.php';
                                 name="adresse"
                                 class="form-control"
                                 value="<?= htmlspecialchars($formData['adresse']) ?>"
-                                placeholder="Musterstraße 1, 12345 Musterstadt"
+                                placeholder="<?= htmlspecialchars(__('auth.address_placeholder')) ?>"
                                 maxlength="255"
                                 autocomplete="street-address"
                             >
@@ -299,20 +299,20 @@ include __DIR__ . '/../includes/header.php';
 
                         <!-- Hinweis Pflichtfelder -->
                         <p class="text-muted small mb-3">
-                            <span class="text-danger">*</span> Pflichtfelder
+                            <span class="text-danger">*</span> <?= __('general.required_fields_note') ?>
                         </p>
 
                         <div class="d-grid">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-person-check me-2"></i>Konto erstellen
+                                <i class="bi bi-person-check me-2"></i><?= __('auth.create_account_header') ?>
                             </button>
                         </div>
                     </form>
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
-                    <span class="text-muted">Bereits registriert?</span>
+                    <span class="text-muted"><?= __('auth.already_registered') ?></span>
                     <a href="/pages/login.php" class="text-warning fw-semibold text-decoration-none ms-1">
-                        Jetzt anmelden <i class="bi bi-arrow-right"></i>
+                        <?= __('auth.login_now') ?> <i class="bi bi-arrow-right"></i>
                     </a>
                 </div>
             </div>
@@ -320,7 +320,7 @@ include __DIR__ . '/../includes/header.php';
             <!-- Zurück zur Startseite -->
             <div class="text-center mt-3">
                 <a href="/index.php" class="text-white-50 text-decoration-none small">
-                    <i class="bi bi-arrow-left me-1"></i>Zurück zur Startseite
+                    <i class="bi bi-arrow-left me-1"></i><?= __('auth.back_to_home') ?>
                 </a>
             </div>
 
@@ -329,6 +329,8 @@ include __DIR__ . '/../includes/header.php';
 </div>
 
 <?php
+$jsShowPw = json_encode(__('auth.show_password_title'));
+$jsHidePw = json_encode(__('auth.hide_password_title'));
 $extraScripts = <<<HTML
 <script>
 // Passwort-Sichtbarkeit umschalten
@@ -340,11 +342,11 @@ document.querySelectorAll('.toggle-pw').forEach(function (btn) {
         if (input.type === 'password') {
             input.type = 'text';
             icon.classList.replace('bi-eye', 'bi-eye-slash');
-            this.title = 'Passwort verbergen';
+            this.title = {$jsHidePw};
         } else {
             input.type = 'password';
             icon.classList.replace('bi-eye-slash', 'bi-eye');
-            this.title = 'Passwort anzeigen';
+            this.title = {$jsShowPw};
         }
     });
 });

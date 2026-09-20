@@ -33,11 +33,37 @@ function setLang(string $lang): void {
 }
 
 /**
- * Übersetzung abrufen
- * Unterstützt printf-Platzhalter: __('key', 'Wert')
+ * Alle Admin-Überschreibungen aus translation_overrides laden (Migration 013).
+ * Eine Abfrage pro Request, nur falls __() tatsächlich aufgerufen wird.
+ * Rückgabe: ['bereich.zweck' => ['de' => ..., 'en' => ...], ...]
+ */
+function loadTranslationOverrides(): array {
+    try {
+        $rows = getDB()->query('SELECT lang_key, de, en FROM translation_overrides')->fetchAll();
+    } catch (PDOException $e) {
+        // Tabelle fehlt (Migration noch nicht gelaufen) oder DB-Störung:
+        // Sprachdateien bleiben die alleinige Quelle, nichts bricht.
+        return [];
+    }
+    $out = [];
+    foreach ($rows as $r) {
+        $out[$r['lang_key']] = ['de' => $r['de'], 'en' => $r['en']];
+    }
+    return $out;
+}
+
+/**
+ * Übersetzung abrufen.
+ * Auflösungskette: Admin-Überschreibung (translation_overrides) → Sprachdatei
+ * (lang/de.php bzw. lang/en.php) → der Schlüssel selbst als letzter Fallback.
+ * Unterstützt printf-Platzhalter: __('key', 'Wert') via vsprintf — Reihenfolge
+ * und Wortstellung bleiben dadurch pro Sprache frei änderbar.
  */
 function __(string $key, string ...$args): string {
     static $translations = null;
+    static $overrides = null;
+    static $lang = null;
+
     if ($translations === null) {
         $lang = getCurrentLang();
         $file = __DIR__ . "/lang/{$lang}.php";
@@ -45,9 +71,100 @@ function __(string $key, string ...$args): string {
             $file = __DIR__ . '/lang/de.php';
         }
         $translations = file_exists($file) ? require $file : [];
+        $overrides = loadTranslationOverrides();
     }
-    $text = $translations[$key] ?? $key;
+
+    $override = $overrides[$key][$lang] ?? null;
+    $text = ($override !== null && $override !== '') ? $override : ($translations[$key] ?? $key);
     return empty($args) ? $text : vsprintf($text, $args);
+}
+
+/**
+ * Alle bekannten Schlüssel aus beiden Sprachdateien, mit Vorgabetext,
+ * aktuellem Override (falls vorhanden) und ob der Schlüssel im Code
+ * überhaupt noch verwendet wird. Für die Admin-Übersetzungsverwaltung.
+ *
+ * @return array<string, array{de_default:string, en_default:string,
+ *   de_override:?string, en_override:?string, used:bool}>
+ */
+function getTranslationCatalog(): array {
+    $deFile = require __DIR__ . '/lang/de.php';
+    $enFile = require __DIR__ . '/lang/en.php';
+    $overrides = loadTranslationOverrides();
+
+    $keys = array_unique(array_merge(array_keys($deFile), array_keys($enFile)));
+    sort($keys);
+
+    $usedKeys = scanUsedTranslationKeys();
+
+    $catalog = [];
+    foreach ($keys as $key) {
+        $catalog[$key] = [
+            'de_default'  => $deFile[$key] ?? '',
+            'en_default'  => $enFile[$key] ?? '',
+            'de_override' => $overrides[$key]['de'] ?? null,
+            'en_override' => $overrides[$key]['en'] ?? null,
+            'used'        => isset($usedKeys[$key]),
+        ];
+    }
+    return $catalog;
+}
+
+/**
+ * Durchsucht den Anwendungscode nach __('schluessel', ...)-Aufrufen.
+ * Rein diagnostisch für die Admin-Oberfläche (Punkt A2: "welche Schlüssel
+ * werden im Code gar nicht verwendet"), deshalb ein einfacher Regex-Scan
+ * statt eines echten Parsers — reicht für den bestehenden Aufrufstil
+ * __('key') / __("key"), läuft nur auf einer selten besuchten Admin-Seite.
+ */
+function scanUsedTranslationKeys(): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+
+    $root  = __DIR__; // functions.php liegt im Projektwurzelverzeichnis
+    $dirs  = [$root . '/pages', $root . '/includes', $root . '/api'];
+    $files = [$root . '/functions.php', $root . '/index.php'];
+    foreach ($dirs as $dir) {
+        if (is_dir($dir)) {
+            $files = array_merge($files, glob($dir . '/*.php') ?: []);
+        }
+    }
+
+    $used = [];
+    foreach ($files as $file) {
+        $src = @file_get_contents($file);
+        if ($src === false) continue;
+        if (preg_match_all('/\b__\(\s*[\'"]([a-zA-Z0-9_.]+)[\'"]/', $src, $m)) {
+            foreach ($m[1] as $key) {
+                $used[$key] = true;
+            }
+        }
+    }
+    return $cache = $used;
+}
+
+/**
+ * Setzt oder löscht die Admin-Überschreibung eines Schlüssels für eine Sprache.
+ * Leerer String entfernt die Überschreibung (Zurücksetzen auf Vorgabe).
+ */
+function setTranslationOverride(string $key, string $de, string $en, int $userId): void {
+    $de = trim($de);
+    $en = trim($en);
+    if ($de === '' && $en === '') {
+        getDB()->prepare('DELETE FROM translation_overrides WHERE lang_key = ?')->execute([$key]);
+        return;
+    }
+    getDB()->prepare(
+        'INSERT INTO translation_overrides (lang_key, de, en, geaendert_von)
+         VALUES (?, NULLIF(?, ""), NULLIF(?, ""), ?)
+         ON DUPLICATE KEY UPDATE de = NULLIF(VALUES(de), ""), en = NULLIF(VALUES(en), ""),
+                                  geaendert_von = VALUES(geaendert_von)'
+    )->execute([$key, $de, $en, $userId]);
+}
+
+/** Setzt einen Schlüssel auf die Vorgabe aus der Sprachdatei zurück. */
+function resetTranslationOverride(string $key): void {
+    getDB()->prepare('DELETE FROM translation_overrides WHERE lang_key = ?')->execute([$key]);
 }
 
 // =====================
@@ -460,32 +577,35 @@ function getEventAuslastung(int $eventId): array {
  * Zahlungsart-Label ausgeben
  */
 function zahlungsartLabel(string $art): string {
-    return match($art) {
-        'bar'          => 'Bar',
-        'ueberweisung' => 'Überweisung',
-        'paypal'       => 'PayPal',
-        default        => ucfirst($art),
-    };
+    // lang/*.php enthalten die Schlüssel payment.bar/ueberweisung/paypal
+    // bereits (angelegt für genau diesen Zweck, bislang ungenutzt).
+    $key = 'payment.' . $art;
+    $text = __($key);
+    return $text !== $key ? $text : ucfirst($art);
 }
 
 /**
  * Status-Badge HTML ausgeben
  */
 function statusBadge(string $status): string {
-    $map = [
-        'geplant'      => ['secondary', 'Geplant'],
-        'eingecheckt'  => ['success',   'Eingecheckt'],
-        'abgerechnet'  => ['primary',   'Abgerechnet'],
-        'verfuegbar'   => ['success',   'Verfügbar'],
-        'reserviert'   => ['warning',   'Reserviert'],
-        'besetzt'      => ['danger',    'Besetzt'],
-        'offen'        => ['warning',   'Offen'],
-        'bezahlt'      => ['success',   'Bezahlt'],
-        'storniert'    => ['danger',    'Storniert'],
-        'planung'      => ['info',      'In Planung'],
-        'aktiv'        => ['success',   'Aktiv'],
+    $colors = [
+        'geplant'      => 'secondary',
+        'eingecheckt'  => 'success',
+        'abgerechnet'  => 'primary',
+        'verfuegbar'   => 'success',
+        'reserviert'   => 'warning',
+        'besetzt'      => 'danger',
+        'offen'        => 'warning',
+        'bezahlt'      => 'success',
+        'storniert'    => 'danger',
+        'planung'      => 'info',
+        'aktiv'        => 'success',
     ];
-    [$color, $label] = $map[$status] ?? ['secondary', ucfirst($status)];
+    $color = $colors[$status] ?? 'secondary';
+    // lang/*.php enthalten die Schlüssel status.* bereits.
+    $key   = 'status.' . $status;
+    $text  = __($key);
+    $label = $text !== $key ? $text : ucfirst($status);
     return "<span class=\"badge bg-{$color}\">" . htmlspecialchars($label) . "</span>";
 }
 

@@ -16,11 +16,11 @@ $email   = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $errors[] = 'Ungültiger Sicherheitstoken. Bitte laden Sie die Seite neu.';
+        $errors[] = __('auth.invalid_csrf');
     } else {
         $email = strtolower(trim($_POST['email'] ?? ''));
         if (!validateEmail($email)) {
-            $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
+            $errors[] = __('auth.invalid_email');
         } elseif (rateLimitExceeded('pwreset_ip', getClientIP(), 5, 3600)
                || rateLimitExceeded('pwreset_mail', $email, 3, 3600)) {
             // Ohne Drosselung ließen sich beliebig viele Reset-Mails an ein
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Passwort vergessen';
+$pageTitle = __('auth.forgot_password_title');
 $bodyClass = 'auth-page bg-dark';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -79,7 +79,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-key me-2"></i>Passwort vergessen
+                        <i class="bi bi-key me-2"></i><?= __('auth.forgot_password_title') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -87,11 +87,11 @@ include __DIR__ . '/../includes/header.php';
                     <?php if ($success): ?>
                     <div class="alert alert-success">
                         <i class="bi bi-check-circle-fill me-2"></i>
-                        Falls ein Konto mit dieser E-Mail-Adresse existiert, wurde eine E-Mail mit einem Reset-Link gesendet. Bitte prüfen Sie Ihren Posteingang.
+                        <?= __('auth.reset_email_sent') ?>
                     </div>
                     <div class="text-center mt-3">
                         <a href="/pages/login.php" class="btn btn-warning">
-                            <i class="bi bi-box-arrow-in-right me-1"></i>Zurück zur Anmeldung
+                            <i class="bi bi-box-arrow-in-right me-1"></i><?= __('auth.back_to_login') ?>
                         </a>
                     </div>
                     <?php else: ?>
@@ -105,24 +105,24 @@ include __DIR__ . '/../includes/header.php';
                     <?php endif; ?>
 
                     <p class="text-muted small mb-4">
-                        Geben Sie Ihre E-Mail-Adresse ein. Wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.
+                        <?= __('auth.forgot_password_instructions') ?>
                     </p>
 
                     <form method="POST" action="" novalidate>
                         <?= csrfField() ?>
                         <div class="mb-3">
                             <label for="email" class="form-label fw-semibold">
-                                <i class="bi bi-envelope me-1"></i>E-Mail-Adresse
+                                <i class="bi bi-envelope me-1"></i><?= __('auth.email') ?>
                             </label>
                             <input type="email" id="email" name="email"
                                    class="form-control form-control-lg"
                                    value="<?= htmlspecialchars($email) ?>"
-                                   placeholder="name@beispiel.de"
+                                   placeholder="<?= htmlspecialchars(__('auth.email_placeholder')) ?>"
                                    required autofocus>
                         </div>
                         <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-send me-2"></i>Reset-Link senden
+                                <i class="bi bi-send me-2"></i><?= __('auth.send_reset_link') ?>
                             </button>
                         </div>
                     </form>
@@ -131,7 +131,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
                     <a href="/pages/login.php" class="text-warning fw-semibold text-decoration-none">
-                        <i class="bi bi-arrow-left me-1"></i>Zurück zur Anmeldung
+                        <i class="bi bi-arrow-left me-1"></i><?= __('auth.back_to_login') ?>
                     </a>
                 </div>
             </div>

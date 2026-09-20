@@ -30,17 +30,17 @@ $tokenValid = (bool)$resetRow;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-        $errors[] = 'Ungültiger Sicherheitstoken.';
+        $errors[] = __('auth.invalid_csrf_short');
     } elseif (!$tokenValid) {
-        $errors[] = 'Dieser Link ist ungültig oder abgelaufen.';
+        $errors[] = __('auth.link_invalid_expired');
     } else {
         $passwort  = $_POST['passwort'] ?? '';
         $passwort2 = $_POST['passwort2'] ?? '';
 
         if (!validatePassword($passwort)) {
-            $errors[] = 'Passwort muss mindestens 8 Zeichen lang sein.';
+            $errors[] = __('auth.password_min_length_short');
         } elseif ($passwort !== $passwort2) {
-            $errors[] = 'Die Passwörter stimmen nicht überein.';
+            $errors[] = __('auth.password_mismatch');
         } else {
             $pdo->beginTransaction();
             // passwort_geaendert_am entwertet alle offenen Sitzungen des Kontos.
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Neues Passwort setzen';
+$pageTitle = __('auth.reset_password_title');
 $bodyClass = 'auth-page bg-dark';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -78,7 +78,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="card border-0 shadow-lg">
                 <div class="card-header bg-warning text-dark text-center py-3 border-0">
                     <h2 class="h5 mb-0 fw-bold">
-                        <i class="bi bi-shield-lock me-2"></i>Neues Passwort setzen
+                        <i class="bi bi-shield-lock me-2"></i><?= __('auth.reset_password_title') ?>
                     </h2>
                 </div>
                 <div class="card-body p-4">
@@ -86,22 +86,22 @@ include __DIR__ . '/../includes/header.php';
                     <?php if ($success): ?>
                     <div class="alert alert-success">
                         <i class="bi bi-check-circle-fill me-2"></i>
-                        Ihr Passwort wurde erfolgreich geändert. Sie können sich jetzt anmelden.
+                        <?= __('auth.password_changed_success') ?>
                     </div>
                     <div class="text-center mt-3">
                         <a href="/pages/login.php" class="btn btn-warning fw-bold">
-                            <i class="bi bi-box-arrow-in-right me-1"></i>Zur Anmeldung
+                            <i class="bi bi-box-arrow-in-right me-1"></i><?= __('auth.to_login') ?>
                         </a>
                     </div>
 
                     <?php elseif (!$tokenValid && empty($errors)): ?>
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        Dieser Passwort-Reset-Link ist ungültig oder abgelaufen. Bitte fordern Sie einen neuen an.
+                        <?= __('auth.reset_link_invalid_full') ?>
                     </div>
                     <div class="text-center mt-3">
                         <a href="/pages/forgot_password.php" class="btn btn-warning fw-bold">
-                            <i class="bi bi-arrow-repeat me-1"></i>Neuen Link anfordern
+                            <i class="bi bi-arrow-repeat me-1"></i><?= __('auth.request_new_link') ?>
                         </a>
                     </div>
 
@@ -121,12 +121,12 @@ include __DIR__ . '/../includes/header.php';
 
                         <div class="mb-3">
                             <label for="passwort" class="form-label fw-semibold">
-                                <i class="bi bi-lock me-1"></i>Neues Passwort
+                                <i class="bi bi-lock me-1"></i><?= __('auth.new_password_label') ?>
                             </label>
                             <div class="input-group">
                                 <input type="password" id="passwort" name="passwort"
                                        class="form-control form-control-lg"
-                                       placeholder="Mindestens 8 Zeichen"
+                                       placeholder="<?= htmlspecialchars(__('auth.min_8_chars_placeholder')) ?>"
                                        required autofocus>
                                 <button type="button" class="btn btn-outline-secondary" id="togglePw1">
                                     <i class="bi bi-eye"></i>
@@ -135,12 +135,12 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="mb-3">
                             <label for="passwort2" class="form-label fw-semibold">
-                                <i class="bi bi-lock-fill me-1"></i>Passwort bestätigen
+                                <i class="bi bi-lock-fill me-1"></i><?= __('auth.confirm_password_label') ?>
                             </label>
                             <div class="input-group">
                                 <input type="password" id="passwort2" name="passwort2"
                                        class="form-control form-control-lg"
-                                       placeholder="Passwort wiederholen"
+                                       placeholder="<?= htmlspecialchars(__('auth.repeat_password_placeholder')) ?>"
                                        required>
                                 <button type="button" class="btn btn-outline-secondary" id="togglePw2">
                                     <i class="bi bi-eye"></i>
@@ -149,7 +149,7 @@ include __DIR__ . '/../includes/header.php';
                         </div>
                         <div class="d-grid mt-4">
                             <button type="submit" class="btn btn-warning btn-lg fw-bold">
-                                <i class="bi bi-check-circle me-2"></i>Passwort speichern
+                                <i class="bi bi-check-circle me-2"></i><?= __('auth.save_password_button') ?>
                             </button>
                         </div>
                     </form>
@@ -158,7 +158,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="card-footer bg-light text-center py-3 border-0">
                     <a href="/pages/login.php" class="text-warning fw-semibold text-decoration-none">
-                        <i class="bi bi-arrow-left me-1"></i>Zurück zur Anmeldung
+                        <i class="bi bi-arrow-left me-1"></i><?= __('auth.back_to_login') ?>
                     </a>
                 </div>
             </div>

@@ -10,8 +10,8 @@
                 <div class="col-md-6 text-md-end">
                     <?php if (isLoggedIn()): ?>
                     <small class="text-muted">
-                        Angemeldet als <strong><?= htmlspecialchars($_SESSION['vorname'] . ' ' . $_SESSION['nachname']) ?></strong>
-                        | <a href="/includes/auth.php?action=logout" class="text-warning text-decoration-none">Abmelden</a>
+                        <?= sprintf(__('footer.logged_in_as'), '<strong>' . htmlspecialchars($_SESSION['vorname'] . ' ' . $_SESSION['nachname']) . '</strong>') ?>
+                        | <a href="/includes/auth.php?action=logout" class="text-warning text-decoration-none"><?= __('nav.logout') ?></a>
                     </small>
                     <?php endif; ?>
                 </div>
