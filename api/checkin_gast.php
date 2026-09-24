@@ -38,15 +38,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     checkinRespond(false, 'Nur POST erlaubt.', [], 405);
 }
 
-requireRole('kassierer', 'admin');
+requireRole('kassierer', 'admin', 'einlass');
 
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
     checkinRespond(false, 'Sicherheitsfehler. Bitte Seite neu laden.', [], 403);
 }
 
-$eventId = isset($_POST['event_id']) && (int)$_POST['event_id'] > 0
-    ? (int)$_POST['event_id']
-    : null;
+// Ein Einlass-Zugang ist an genau ein Event gebunden – das Event kommt aus
+// der Session, nicht aus dem Formular, damit ein manipulierter Request nicht
+// Tickets einer anderen Veranstaltung einchecken kann.
+if (hasRole('einlass')) {
+    $eventId = $_SESSION['einlass_event_id'] ?? null;
+} else {
+    $eventId = isset($_POST['event_id']) && (int)$_POST['event_id'] > 0
+        ? (int)$_POST['event_id']
+        : null;
+}
 
 $payload        = trim((string)($_POST['payload'] ?? ''));
 $reservationId  = (int)($_POST['reservation_id'] ?? 0);
@@ -65,7 +72,7 @@ if ($payload !== '') {
     if ($result['ok']) {
         logAudit('CHECK_IN_MANUELL', 'reservations',
             $result['data']['reservation_id'] ?? null,
-            'Manueller Check-in ohne QR-Signatur: ' . $buchungsnummer);
+            'Manueller Check-in ohne QR-Signatur: ' . $buchungsnummer . auditActorLabel());
     }
 } else {
     checkinRespond(false, 'Kein Ticket übermittelt.', [], 400);

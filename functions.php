@@ -327,10 +327,10 @@ function rateLimitExceeded(string $aktion, string $schluessel, int $max, int $fe
 // =====================
 
 /**
- * Prüft ob der Benutzer eingeloggt ist
+ * Prüft ob der Benutzer eingeloggt ist (normales Konto ODER Einlass-Zugang)
  */
 function isLoggedIn(): bool {
-    return currentIdentity() !== null;
+    return currentIdentity() !== null || currentEinlassIdentity() !== null;
 }
 
 /**
@@ -338,7 +338,65 @@ function isLoggedIn(): bool {
  */
 function hasRole(string ...$roles): bool {
     $user = currentIdentity();
-    return $user !== null && in_array($user['rolle'], $roles, true);
+    if ($user !== null) {
+        return in_array($user['rolle'], $roles, true);
+    }
+    return currentEinlassIdentity() !== null && in_array('einlass', $roles, true);
+}
+
+/**
+ * Lädt den Einlass-Zugang (Kurzcode-Login ohne eigenes Benutzerkonto) einmal
+ * pro Request aus der Datenbank – Pendant zu currentIdentity() für Helfer,
+ * die keine Zeile in `users` haben. Wird der Code vom Admin deaktiviert,
+ * endet die Sitzung beim nächsten Request, genau wie bei currentIdentity().
+ */
+function currentEinlassIdentity(): ?array {
+    static $geladen = false;
+    static $ident   = null;
+
+    if ($geladen) return $ident;
+    $geladen = true;
+
+    if (empty($_SESSION['einlass_id'])) return null;
+
+    try {
+        $stmt = getDB()->prepare(
+            'SELECT id, event_id, label, aktiv FROM einlass_zugaenge WHERE id = ?'
+        );
+        $stmt->execute([(int)$_SESSION['einlass_id']]);
+        $row = $stmt->fetch();
+    } catch (Throwable $e) {
+        error_log('Einlass-Identitätsprüfung fehlgeschlagen: ' . $e->getMessage());
+        return null;
+    }
+
+    if (!$row || (int)$row['aktiv'] !== 1) {
+        unset($_SESSION['einlass_id'], $_SESSION['einlass_event_id'], $_SESSION['einlass_label']);
+        if (($_SESSION['rolle'] ?? null) === 'einlass') {
+            unset($_SESSION['rolle']);
+        }
+        return null;
+    }
+
+    return $ident = [
+        'id'       => (int)$row['id'],
+        'event_id' => (int)$row['event_id'],
+        'label'    => $row['label'],
+        'rolle'    => 'einlass',
+    ];
+}
+
+/**
+ * Kurzbeschreibung des aktuell handelnden Akteurs für Audit-Texte – leer für
+ * normale Benutzerkonten (die stehen bereits über user_id im Log), sonst ein
+ * Hinweis auf den Einlass-Zugang, da dessen Check-ins nicht über user_id
+ * nachvollziehbar sind.
+ */
+function auditActorLabel(): string {
+    if (!empty($_SESSION['einlass_label'])) {
+        return ' [Einlass: ' . $_SESSION['einlass_label'] . ']';
+    }
+    return '';
 }
 
 /**
@@ -741,7 +799,6 @@ function ensureCheckinColumns(): bool {
     $pdo = getDB();
     try {
         $pdo->query('SELECT eingecheckt_am FROM reservations LIMIT 1');
-        return $done = true;
     } catch (PDOException $e) {
         try {
             $pdo->exec('ALTER TABLE reservations
@@ -749,12 +806,27 @@ function ensureCheckinColumns(): bool {
                         ADD COLUMN eingecheckt_von INT DEFAULT NULL');
             try { $pdo->exec('ALTER TABLE reservations ADD INDEX idx_eingecheckt_am (eingecheckt_am)'); } catch (PDOException $i) {}
             try { $pdo->exec('ALTER TABLE reservations ADD INDEX idx_event_status (event_id, status)'); } catch (PDOException $i) {}
-            return $done = true;
         } catch (PDOException $e2) {
             error_log('Check-in-Migration fehlgeschlagen: ' . $e2->getMessage());
             return $done = false;
         }
     }
+
+    // eingecheckt_von_einlass_id (Migration 014) wird hier defensiv nachgezogen,
+    // damit checkinReservation() – zentral von Dashboard, Gästeliste, Scanner
+    // UND dem neuen Einlass-Zugang genutzt – auf Installationen ohne
+    // ausgeführte Migration nicht fehlschlägt.
+    try {
+        $pdo->query('SELECT eingecheckt_von_einlass_id FROM reservations LIMIT 1');
+    } catch (PDOException $e) {
+        try {
+            $pdo->exec('ALTER TABLE reservations ADD COLUMN eingecheckt_von_einlass_id INT DEFAULT NULL');
+        } catch (PDOException $e2) {
+            error_log('Einlass-Spalten-Migration fehlgeschlagen: ' . $e2->getMessage());
+        }
+    }
+
+    return $done = true;
 }
 
 function settingsTableExists(): bool {
@@ -999,14 +1071,15 @@ function checkinReservation(int $reservationId, ?int $expectedEventId = null): a
             ];
         }
 
-        $now    = date('Y-m-d H:i:s');
-        $userId = $_SESSION['user_id'] ?? null;
+        $now       = date('Y-m-d H:i:s');
+        $userId    = $_SESSION['user_id'] ?? null;
+        $einlassId = $_SESSION['einlass_id'] ?? null;
 
         $pdo->prepare(
             "UPDATE reservations
-             SET status = 'eingecheckt', eingecheckt_am = ?, eingecheckt_von = ?
+             SET status = 'eingecheckt', eingecheckt_am = ?, eingecheckt_von = ?, eingecheckt_von_einlass_id = ?
              WHERE id = ?"
-        )->execute([$now, $userId, $reservationId]);
+        )->execute([$now, $userId, $einlassId, $reservationId]);
 
         // Sitzplatz nur bei Tischplan-Events (Freitickets haben seat_id = NULL)
         if (!empty($res['seat_id'])) {
@@ -1019,7 +1092,7 @@ function checkinReservation(int $reservationId, ?int $expectedEventId = null): a
         logAudit('CHECK_IN', 'reservations', $reservationId, json_encode([
             'buchungsnummer' => $res['buchungsnummer'],
             'gast'           => $gast,
-        ], JSON_UNESCAPED_UNICODE));
+        ], JSON_UNESCAPED_UNICODE) . auditActorLabel());
 
         return [
             'ok'      => true,

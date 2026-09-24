@@ -119,6 +119,80 @@ function logoutUser(): void {
 }
 
 /**
+ * Einlass-Zugang per Kurzcode anmelden (kein eigenes Benutzerkonto nötig).
+ * Codes sind kurz (z.B. 6-stellig) – die eigentliche Bremse gegen Erraten
+ * ist die IP-basierte Rate-Begrenzung, nicht die Code-Länge selbst.
+ * Gibt true bei Erfolg, sonst eine Fehlermeldung zurück.
+ */
+function loginEinlass(string $code): bool|string {
+    $code = trim($code);
+    $ip   = getClientIP();
+
+    if ($code === '') {
+        return 'Bitte einen Zugangscode eingeben.';
+    }
+    if (rateLimitExceeded('einlass_login', $ip, 15, 900)) {
+        return 'Zu viele Anmeldeversuche. Bitte in einigen Minuten erneut versuchen.';
+    }
+
+    $pdo = getDB();
+    try {
+        $rows = $pdo->query(
+            'SELECT id, event_id, code_hash, label FROM einlass_zugaenge WHERE aktiv = 1'
+        )->fetchAll();
+    } catch (PDOException $e) {
+        return 'Einlass-Zugang ist auf diesem System noch nicht eingerichtet.';
+    }
+
+    $match = null;
+    foreach ($rows as $row) {
+        if (verifyPassword($code, $row['code_hash'])) {
+            $match = $row;
+            break;
+        }
+    }
+
+    if ($match === null) {
+        rateLimitHit('einlass_login', $ip);
+        return 'Ungültiger Zugangscode.';
+    }
+
+    session_regenerate_id(true);
+    // Falls dieselbe Sitzung zuvor ein normales Konto war: sauber trennen,
+    // damit hasRole() eindeutig einer Identität zugeordnet werden kann.
+    unset($_SESSION['user_id'], $_SESSION['vorname'], $_SESSION['nachname'],
+          $_SESSION['email'], $_SESSION['pw_epoche']);
+
+    $_SESSION['einlass_id']       = (int)$match['id'];
+    $_SESSION['einlass_event_id'] = (int)$match['event_id'];
+    $_SESSION['einlass_label']    = $match['label'];
+    $_SESSION['rolle']            = 'einlass';
+
+    $pdo->prepare('UPDATE einlass_zugaenge SET zuletzt_benutzt_am = NOW() WHERE id = ?')
+        ->execute([$match['id']]);
+
+    logAudit('EINLASS_LOGIN', 'einlass_zugaenge', (int)$match['id'], 'Login: ' . $match['label']);
+
+    return true;
+}
+
+/**
+ * Einlass-Zugang abmelden (Pendant zu logoutUser() für Kurzcode-Sitzungen).
+ */
+function logoutEinlass(): void {
+    if (!empty($_SESSION['einlass_id'])) {
+        logAudit('EINLASS_LOGOUT', 'einlass_zugaenge', (int)$_SESSION['einlass_id'],
+            'Logout: ' . ($_SESSION['einlass_label'] ?? ''));
+    }
+    session_unset();
+    session_destroy();
+    session_start();
+    session_regenerate_id(true);
+    setcookie(session_name(), '', time() - 3600, '/');
+    redirect('/pages/einlass_login.php');
+}
+
+/**
  * Neuen Benutzer registrieren
  * Gibt true bei Erfolg, sonst Fehlermeldung-Array
  */
@@ -183,4 +257,8 @@ function registerUser(array $data): bool|array {
 // Direkt aufgerufen: Logout-Aktion (/includes/auth.php?action=logout)
 if (basename($_SERVER['PHP_SELF']) === 'auth.php' && ($_GET['action'] ?? '') === 'logout') {
     logoutUser();
+}
+// Direkt aufgerufen: Einlass-Logout (/includes/auth.php?action=einlass_logout)
+if (basename($_SERVER['PHP_SELF']) === 'auth.php' && ($_GET['action'] ?? '') === 'einlass_logout') {
+    logoutEinlass();
 }

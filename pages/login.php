@@ -205,6 +205,13 @@ include __DIR__ . '/../includes/header.php';
                 </a>
             </div>
 
+            <!-- Einlass-Helfer ohne eigenes Konto -->
+            <div class="text-center mt-2">
+                <a href="/pages/einlass_login.php" class="text-white-50 text-decoration-none small">
+                    <i class="bi bi-shield-check me-1"></i>Einlass-Zugang mit Kurzcode
+                </a>
+            </div>
+
         </div>
     </div>
 </div>

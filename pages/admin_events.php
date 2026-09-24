@@ -157,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($tischnummer < 1) $errors[] = 'Tischnummer muss mindestens 1 sein.';
         if ($max_plaetze < 1) $errors[] = 'Anzahl Plätze muss mindestens 1 sein.';
+        if ($max_plaetze > MAX_PLAETZE_PRO_TISCH) $errors[] = 'Anzahl Plätze darf höchstens ' . MAX_PLAETZE_PRO_TISCH . ' sein.';
 
         if (empty($errors) && $event_id > 0) {
             try {
@@ -200,7 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (count($parts) < 2) { $skipped++; continue; }
             $tischnummer = (int)trim($parts[0]);
             $max_plaetze = (int)trim($parts[1]);
-            if ($tischnummer < 1 || $max_plaetze < 1) { $skipped++; continue; }
+            if ($tischnummer < 1 || $max_plaetze < 1 || $max_plaetze > MAX_PLAETZE_PRO_TISCH) { $skipped++; continue; }
 
             try {
                 $stmt = $pdo->prepare(
@@ -223,6 +224,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             logAudit('CREATE', 'tables', $event_id, "CSV-Import: {$added} Tische hinzugefügt");
         }
         setFlash('success', "{$added} Tisch/Tische importiert, {$skipped} übersprungen.");
+        redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
+    }
+
+    // ── Einlass-Zugang erstellen ─────────────────────────────────────────────
+    if ($postAction === 'create_einlass_code') {
+        $event_id = (int)($_POST['event_id'] ?? 0);
+        $label    = trim($_POST['label'] ?? '');
+        if ($label === '') $label = 'Gerät';
+        $label = mb_substr($label, 0, 100);
+
+        if ($event_id > 0) {
+            try {
+                $code = (string)random_int(100000, 999999);
+                $pdo->prepare(
+                    'INSERT INTO einlass_zugaenge (event_id, code_hash, label, erstellt_von) VALUES (?,?,?,?)'
+                )->execute([$event_id, hashPassword($code), $label, $_SESSION['user_id']]);
+                $newId = (int)$pdo->lastInsertId();
+                logAudit('CREATE', 'einlass_zugaenge', $newId, "Einlass-Zugang erstellt: {$label}");
+                setFlash('success',
+                    "Zugangscode für „{$label}“: {$code} — jetzt notieren/weitergeben, er wird danach nicht mehr angezeigt.");
+            } catch (PDOException $e) {
+                error_log('Einlass-Code anlegen fehlgeschlagen: ' . $e->getMessage());
+                setFlash('error', 'Einlass-Zugang konnte nicht angelegt werden. Wurde Migration 014 ausgeführt?');
+            }
+        }
+        redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
+    }
+
+    // ── Einlass-Zugang aktivieren/deaktivieren ───────────────────────────────
+    if ($postAction === 'toggle_einlass_code') {
+        $id       = (int)($_POST['einlass_id'] ?? 0);
+        $event_id = (int)($_POST['event_id'] ?? 0);
+        if ($id > 0) {
+            $pdo->prepare('UPDATE einlass_zugaenge SET aktiv = 1 - aktiv WHERE id = ?')->execute([$id]);
+            logAudit('UPDATE', 'einlass_zugaenge', $id, 'Aktiv-Status umgeschaltet');
+            setFlash('success', 'Zugang aktualisiert.');
+        }
+        redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
+    }
+
+    // ── Einlass-Zugang löschen ────────────────────────────────────────────────
+    if ($postAction === 'delete_einlass_code') {
+        $id       = (int)($_POST['einlass_id'] ?? 0);
+        $event_id = (int)($_POST['event_id'] ?? 0);
+        if ($id > 0) {
+            $pdo->prepare('DELETE FROM einlass_zugaenge WHERE id = ?')->execute([$id]);
+            logAudit('DELETE', 'einlass_zugaenge', $id, null);
+            setFlash('success', 'Zugang gelöscht.');
+        }
         redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
     }
 
@@ -354,6 +404,22 @@ if ($action === 'tables' && isset($_GET['event_id'])) {
     }
 }
 
+// Einlass-Zugänge für das verwaltete Event (Migration 014 – fehlt sie noch,
+// bleibt die Liste einfach leer statt die Seite zu zerstören).
+$eventEinlassCodes = [];
+if ($manageEvent) {
+    try {
+        $eStmt = $pdo->prepare(
+            'SELECT id, label, aktiv, erstellt_am, zuletzt_benutzt_am
+             FROM einlass_zugaenge WHERE event_id = ? ORDER BY erstellt_am DESC'
+        );
+        $eStmt->execute([$manageEvent['id']]);
+        $eventEinlassCodes = $eStmt->fetchAll();
+    } catch (PDOException $e) {
+        $eventEinlassCodes = [];
+    }
+}
+
 // Für manuelle Reservierung: Benutzer & Events
 $allUsers  = $pdo->query(
     "SELECT id, vorname, nachname, email FROM users WHERE aktiv=1 ORDER BY nachname, vorname"
@@ -428,7 +494,8 @@ include __DIR__ . '/../includes/navbar.php';
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold small">Anzahl Plätze</label>
-                            <input type="number" name="max_plaetze" class="form-control" min="1" max="20" required>
+                            <input type="number" name="max_plaetze" class="form-control" min="1" max="<?= MAX_PLAETZE_PRO_TISCH ?>" required>
+                            <div class="form-text">Bis zu <?= MAX_PLAETZE_PRO_TISCH ?> Plätze pro Tisch.</div>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">
                             <i class="bi bi-plus me-1"></i>Tisch & Sitzplätze anlegen
@@ -506,6 +573,105 @@ include __DIR__ . '/../includes/navbar.php';
                                         <input type="hidden" name="table_id" value="<?= $t['id'] ?>">
                                         <input type="hidden" name="event_id" value="<?= $manageEvent['id'] ?>">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Einlass-Zugänge (Kurzcode-Login fürs primitive Handy) ═══════════════ -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between">
+            <h5 class="mb-0 fw-semibold">
+                <i class="bi bi-shield-check me-2"></i>Einlass-Zugänge
+                <span class="badge bg-white text-dark ms-2"><?= count($eventEinlassCodes) ?></span>
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                Kurzcode-Login für Helfer ohne eigenes Kassierer-Konto – gedacht für die
+                <a href="/pages/einlass_scan.php" class="text-decoration-none">Einlass-Scan-Seite</a>
+                auf einem einfachen Handy. Je Helfer/Gerät ein eigener Code.
+            </p>
+            <div class="row g-4">
+                <div class="col-12 col-lg-4">
+                    <h6 class="fw-semibold text-primary mb-3">
+                        <i class="bi bi-plus-circle me-1"></i>Zugang erstellen
+                    </h6>
+                    <form method="post">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="post_action" value="create_einlass_code">
+                        <input type="hidden" name="event_id" value="<?= $manageEvent['id'] ?>">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Bezeichnung</label>
+                            <input type="text" name="label" class="form-control" maxlength="100"
+                                   placeholder="z.B. Gerät 3 / Haupteingang" required>
+                        </div>
+                        <button type="submit" class="btn btn-dark w-100">
+                            <i class="bi bi-key me-1"></i>Code erzeugen
+                        </button>
+                        <div class="form-text">Der Code wird nur direkt nach dem Erzeugen einmalig angezeigt.</div>
+                    </form>
+                </div>
+                <div class="col-12 col-lg-8">
+                    <h6 class="fw-semibold mb-3">
+                        <i class="bi bi-list-ul me-1"></i>Vorhandene Zugänge
+                    </h6>
+                    <?php if (empty($eventEinlassCodes)): ?>
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-inbox fs-2 d-block mb-2"></i>Noch keine Einlass-Zugänge angelegt.
+                    </div>
+                    <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Bezeichnung</th>
+                                    <th>Status</th>
+                                    <th>Zuletzt benutzt</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($eventEinlassCodes as $ec): ?>
+                            <tr>
+                                <td><strong><?= htmlspecialchars($ec['label']) ?></strong></td>
+                                <td>
+                                    <?php if ((int)$ec['aktiv'] === 1): ?>
+                                    <span class="badge bg-success">Aktiv</span>
+                                    <?php else: ?>
+                                    <span class="badge bg-secondary">Deaktiviert</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="small text-muted">
+                                    <?= $ec['zuletzt_benutzt_am'] ? date('d.m.Y H:i', strtotime($ec['zuletzt_benutzt_am'])) : 'Noch nie' ?>
+                                </td>
+                                <td class="text-end">
+                                    <form method="post" class="d-inline">
+                                        <?= csrfField() ?>
+                                        <input type="hidden" name="post_action" value="toggle_einlass_code">
+                                        <input type="hidden" name="einlass_id" value="<?= (int)$ec['id'] ?>">
+                                        <input type="hidden" name="event_id" value="<?= $manageEvent['id'] ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Aktivieren/Deaktivieren">
+                                            <i class="bi bi-power"></i>
+                                        </button>
+                                    </form>
+                                    <form method="post" class="d-inline"
+                                          data-confirm="Zugang „<?= htmlspecialchars($ec['label'], ENT_QUOTES) ?>“ wirklich löschen?">
+                                        <?= csrfField() ?>
+                                        <input type="hidden" name="post_action" value="delete_einlass_code">
+                                        <input type="hidden" name="einlass_id" value="<?= (int)$ec['id'] ?>">
+                                        <input type="hidden" name="event_id" value="<?= $manageEvent['id'] ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </form>

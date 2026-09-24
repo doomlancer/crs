@@ -75,6 +75,10 @@ define('MAX_LOGIN_VERSUCHE', 5);
 define('LOGIN_SPERRZEIT',    900);
 define('TICKET_PREIS',       (float)$_ENV['TICKET_PREIS']);
 define('UPLOAD_DIR',         __DIR__ . '/uploads/');
+// Obergrenze für Plätze pro Tisch. War früher hart bei 20 (nur im HTML-Attribut,
+// kein Server-Check) – Säle mit größeren Tischen (bis 28 Plätze) ließen sich
+// damit gar nicht abbilden.
+define('MAX_PLAETZE_PRO_TISCH', 40);
 
 if (!is_dir(__DIR__ . '/logs')) {
     mkdir(__DIR__ . '/logs', 0750, true);
