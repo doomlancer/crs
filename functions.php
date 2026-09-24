@@ -654,7 +654,12 @@ function statusBadge(string $status): string {
         'reserviert'   => 'warning',
         'besetzt'      => 'danger',
         'offen'        => 'warning',
-        'bezahlt'      => 'success',
+        // Bewusst NICHT 'success' (=grün): grün ist produktweit für
+        // "eingecheckt" reserviert (Ampel-Logik in event_live_dashboard.php).
+        // Beide Zustände können in derselben Gästeliste-Zeile nebeneinander
+        // stehen – gleiche Farbe für "bezahlt" und "eingecheckt" ließ sich
+        // dort nicht mehr unterscheiden.
+        'bezahlt'      => 'info',
         'storniert'    => 'danger',
         'planung'      => 'info',
         'aktiv'        => 'success',
@@ -823,6 +828,44 @@ function ensureCheckinColumns(): bool {
             $pdo->exec('ALTER TABLE reservations ADD COLUMN eingecheckt_von_einlass_id INT DEFAULT NULL');
         } catch (PDOException $e2) {
             error_log('Einlass-Spalten-Migration fehlgeschlagen: ' . $e2->getMessage());
+        }
+    }
+
+    return $done = true;
+}
+
+/**
+ * Stellt sicher, dass pos_x/pos_y (tables) und tischplan_bild (events) aus
+ * Migration 003 vorhanden sind – dieselbe defensive Logik wie
+ * ensureCheckinColumns(), da getEventLiveGrid() (zentral für Dashboard und
+ * Sitzplan-Editor) diese Spalten sonst bei nicht ausgeführter Migration
+ * mit einem Fatal Error abbricht.
+ */
+function ensureTischplanEditorColumns(): bool {
+    static $done = null;
+    if ($done !== null) return $done;
+
+    $pdo = getDB();
+    try {
+        $pdo->query('SELECT pos_x, pos_y FROM `tables` LIMIT 1');
+    } catch (PDOException $e) {
+        try {
+            $pdo->exec('ALTER TABLE `tables`
+                        ADD COLUMN pos_x DECIMAL(5,2) DEFAULT NULL,
+                        ADD COLUMN pos_y DECIMAL(5,2) DEFAULT NULL');
+        } catch (PDOException $e2) {
+            error_log('Tischplan-Editor-Migration (tables) fehlgeschlagen: ' . $e2->getMessage());
+            return $done = false;
+        }
+    }
+
+    try {
+        $pdo->query('SELECT tischplan_bild FROM events LIMIT 1');
+    } catch (PDOException $e) {
+        try {
+            $pdo->exec('ALTER TABLE events ADD COLUMN tischplan_bild VARCHAR(255) DEFAULT NULL');
+        } catch (PDOException $e2) {
+            error_log('Tischplan-Editor-Migration (events) fehlgeschlagen: ' . $e2->getMessage());
         }
     }
 
@@ -1179,6 +1222,7 @@ function checkinByPayload(string $payload, ?int $expectedEventId = null, bool $r
  */
 function getEventLiveGrid(int $eventId): ?array {
     $pdo = getDB();
+    ensureTischplanEditorColumns();
 
     $stmtEv = $pdo->prepare('SELECT id, event_typ, max_gaeste FROM events WHERE id = ?');
     $stmtEv->execute([$eventId]);
@@ -1237,7 +1281,7 @@ function getEventLiveGrid(int $eventId): ?array {
 
     // Tischplan-Events
     $stmt = $pdo->prepare(
-        "SELECT t.id AS table_id, t.tischnummer,
+        "SELECT t.id AS table_id, t.tischnummer, t.pos_x, t.pos_y,
                 s.id AS seat_id, s.sitzplatznummer,
                 r.id AS reservation_id, r.status AS res_status, r.buchungsnummer,
                 u.vorname, u.nachname
@@ -1257,6 +1301,8 @@ function getEventLiveGrid(int $eventId): ?array {
             $tables[$tid] = [
                 'table_id'    => $tid,
                 'tischnummer' => (int)$row['tischnummer'],
+                'pos_x'       => $row['pos_x'] !== null ? (float)$row['pos_x'] : null,
+                'pos_y'       => $row['pos_y'] !== null ? (float)$row['pos_y'] : null,
                 'seats'       => [],
             ];
         }

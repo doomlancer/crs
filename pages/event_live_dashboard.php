@@ -12,6 +12,32 @@ requireRole('kassierer', 'admin');
 
 $pdo = getDB();
 
+// ─── Saalfoto hochladen (Editor-Modus) ────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['post_action'] ?? '') === 'upload_floorplan') {
+    $uploadEventId = (int)($_POST['event_id'] ?? 0);
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        setFlash('error', 'Sicherheitsfehler. Bitte erneut versuchen.');
+        redirect('/pages/event_live_dashboard.php?event_id=' . $uploadEventId . '&mode=editor');
+    }
+    if ($uploadEventId > 0 && !empty($_FILES['floorplan']['name'])) {
+        $result = saveUploadedImage($_FILES['floorplan'], 'floorplan', 5 * 1024 * 1024);
+        if ($result['ok']) {
+            ensureTischplanEditorColumns();
+            $stmtOld = $pdo->prepare('SELECT tischplan_bild FROM events WHERE id = ?');
+            $stmtOld->execute([$uploadEventId]);
+            $oldFile = $stmtOld->fetchColumn();
+            $pdo->prepare('UPDATE events SET tischplan_bild = ? WHERE id = ?')
+                ->execute([$result['name'], $uploadEventId]);
+            if ($oldFile) deleteUploadedFile($oldFile);
+            logAudit('UPDATE', 'events', $uploadEventId, 'Saalfoto hochgeladen: ' . $result['name']);
+            setFlash('success', 'Saalfoto hochgeladen.');
+        } else {
+            setFlash('error', $result['error']);
+        }
+    }
+    redirect('/pages/event_live_dashboard.php?event_id=' . $uploadEventId . '&mode=editor');
+}
+
 // ─── Event-Selektor (gleiche Query wie kassierer_dashboard.php) ──────────────
 $events = $pdo->query(
     "SELECT id, name, datum, status
@@ -31,6 +57,24 @@ if ($selectedEventId) {
     if ($currentEvent) {
         $grid = getEventLiveGrid($selectedEventId);
     }
+}
+
+$sitzplanMode = ($_GET['mode'] ?? '') === 'editor' ? 'editor' : 'auto';
+
+// Fallback-Position für Tische ohne gespeicherte Koordinaten (Migration 003,
+// bisher ungenutzt): einfaches Raster, damit im Editor beim ersten Aufruf
+// nichts übereinander liegt. Sobald ein Tisch verschoben wird, wird seine
+// echte Position gespeichert und dieser Fallback greift für ihn nicht mehr.
+if ($grid && $grid['event_typ'] === 'tischplan') {
+    foreach ($grid['tables'] as $i => &$t) {
+        if ($t['pos_x'] === null || $t['pos_y'] === null) {
+            $col = $i % 4;
+            $row = intdiv($i, 4);
+            $t['pos_x'] = 12 + $col * 25;
+            $t['pos_y'] = 15 + $row * 28;
+        }
+    }
+    unset($t);
 }
 
 $pageTitle = 'Live-Übersicht';
@@ -63,6 +107,34 @@ $extraHead = '
 .legend-dot { display:inline-block; width:16px; height:16px; border-radius:4px; vertical-align:middle; margin-right:4px; }
 .live-table-card { border-left: 3px solid #eab308; }
 #search-results .list-group-item { cursor: pointer; }
+
+/* ── Sitzplan: Automatisch-Modus ─────────────────────────────────────────── */
+.table-tile-btn {
+    display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left;
+    background: #fff; border: 2px solid #e9ecef; border-radius: 10px; padding: 10px 12px;
+    cursor: pointer;
+}
+.table-tile-btn[aria-expanded="true"] { border-color: #eab308; }
+.occ-bar { display: flex; width: 100%; height: 7px; border-radius: 4px; overflow: hidden; background: #e9ecef; }
+.occ-bar span { display: block; height: 100%; }
+
+/* ── Sitzplan: Editor-Modus ───────────────────────────────────────────────── */
+.editor-canvas {
+    position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 12px;
+    background-color: #f8f9fa; background-size: cover; background-position: center;
+    background-image: repeating-linear-gradient(0deg, #eee, #eee 1px, transparent 1px, transparent 40px),
+                       repeating-linear-gradient(90deg, #eee, #eee 1px, transparent 1px, transparent 40px);
+    border: 1px dashed #ced4da; overflow: hidden; touch-action: none;
+}
+.editor-canvas.has-photo { background-image: none; border-style: solid; }
+.editor-chip {
+    position: absolute; transform: translate(-50%, -50%); cursor: grab;
+    background: #1a1a1a; color: #fff; border-radius: 8px; padding: 6px 10px;
+    font-size: .78rem; font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,.25);
+    user-select: none; touch-action: none; white-space: nowrap;
+}
+.editor-chip:active { cursor: grabbing; }
+.editor-chip.dragging { opacity: .85; box-shadow: 0 4px 14px rgba(0,0,0,.4); z-index: 5; }
 </style>';
 
 include __DIR__ . '/../includes/header.php';
@@ -167,34 +239,112 @@ include __DIR__ . '/../includes/navbar.php';
             <i class="bi bi-info-circle me-2"></i>Für dieses Event sind noch keine Tische angelegt.
         </div>
         <?php else: ?>
-        <div class="row g-3">
-            <?php foreach ($grid['tables'] as $tisch): ?>
-            <div class="col-6 col-md-4 col-xl-3">
-                <div class="card h-100 shadow-sm live-table-card">
-                    <div class="card-header bg-dark text-white py-2">
-                        <span class="fw-bold small">
-                            <i class="bi bi-table text-warning me-1"></i>Tisch <?= (int)$tisch['tischnummer'] ?>
-                        </span>
-                    </div>
-                    <div class="card-body p-2 d-flex flex-wrap" style="gap:4px;">
-                        <?php foreach ($tisch['seats'] as $seat):
-                            $clickable = $seat['reservation_id'] !== null;
-                            $title = $clickable
-                                ? htmlspecialchars($seat['gast'] . ' – ' . $seat['buchungsnummer'])
-                                : 'Frei';
-                        ?>
-                        <span class="live-tile tile-<?= $seat['farbe'] ?>"
-                              data-seat-key="<?= $seat['seat_id'] ?>"
-                              <?= $clickable ? 'data-reservation-id="' . (int)$seat['reservation_id'] . '"' : '' ?>
-                              title="<?= $title ?>">
-                            <?= $seat['sitzplatznummer'] ?>
-                        </span>
-                        <?php endforeach; ?>
+
+        <!-- Umschalter: kompakte Übersicht vs. freies Einrichten -->
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Sitzplan-Ansicht">
+                <button type="button" class="btn btn-outline-dark <?= $sitzplanMode === 'auto' ? 'active' : '' ?>" data-mode-btn="auto">
+                    <i class="bi bi-grid-3x3-gap me-1"></i>Automatisch
+                </button>
+                <button type="button" class="btn btn-outline-dark <?= $sitzplanMode === 'editor' ? 'active' : '' ?>" data-mode-btn="editor">
+                    <i class="bi bi-arrows-move me-1"></i>Frei einrichten
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ Automatisch: kompakte Kacheln mit Klick-zum-Aufklappen ═══════════ -->
+        <div id="mode-auto" style="<?= $sitzplanMode === 'editor' ? 'display:none;' : '' ?>">
+            <div class="row g-3">
+                <?php foreach ($grid['tables'] as $tisch):
+                    $counts = ['rot' => 0, 'gelb' => 0, 'gruen' => 0];
+                    foreach ($tisch['seats'] as $s) { $counts[$s['farbe']]++; }
+                    $gesamt = max(1, count($tisch['seats']));
+                    $pctOf = fn($n) => round($n / $gesamt * 100);
+                ?>
+                <div class="col-6 col-md-4 col-xl-3">
+                    <div class="card h-100 shadow-sm live-table-card">
+                        <div class="card-body p-2">
+                            <button type="button" class="table-tile-btn" data-table-toggle="<?= $tisch['table_id'] ?>"
+                                    aria-expanded="false" aria-controls="table-seats-<?= $tisch['table_id'] ?>">
+                                <span class="fw-bold small">
+                                    <i class="bi bi-table text-warning me-1"></i>Tisch <?= (int)$tisch['tischnummer'] ?>
+                                </span>
+                                <span class="occ-bar" data-table-bar="<?= $tisch['table_id'] ?>">
+                                    <span style="background:#22c55e;width:<?= $pctOf($counts['gruen']) ?>%" data-bar-gruen></span>
+                                    <span style="background:#eab308;width:<?= $pctOf($counts['gelb']) ?>%" data-bar-gelb></span>
+                                    <span style="background:#ef4444;width:<?= $pctOf($counts['rot']) ?>%" data-bar-rot></span>
+                                </span>
+                                <span class="small text-muted" data-table-counts="<?= $tisch['table_id'] ?>">
+                                    <?= $counts['gruen'] ?> eingecheckt &middot; <?= $counts['gelb'] ?> verkauft &middot; <?= $counts['rot'] ?> frei
+                                </span>
+                            </button>
+                            <div id="table-seats-<?= $tisch['table_id'] ?>" class="d-flex flex-wrap mt-2" style="gap:4px;display:none;">
+                                <?php foreach ($tisch['seats'] as $seat):
+                                    $clickable = $seat['reservation_id'] !== null;
+                                    $title = $clickable
+                                        ? htmlspecialchars($seat['gast'] . ' – ' . $seat['buchungsnummer'])
+                                        : 'Frei';
+                                ?>
+                                <span class="live-tile tile-<?= $seat['farbe'] ?>"
+                                      data-seat-key="<?= $seat['seat_id'] ?>"
+                                      data-table-parent="<?= $tisch['table_id'] ?>"
+                                      <?= $clickable ? 'data-reservation-id="' . (int)$seat['reservation_id'] . '"' : '' ?>
+                                      title="<?= $title ?>">
+                                    <?= $seat['sitzplatznummer'] ?>
+                                </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
                     </div>
                 </div>
+                <?php endforeach; ?>
             </div>
-            <?php endforeach; ?>
         </div>
+
+        <!-- ═══ Frei einrichten: Tische per Ziehen positionieren ═════════════════ -->
+        <div id="mode-editor" style="<?= $sitzplanMode === 'editor' ? '' : 'display:none;' ?>">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body d-flex flex-wrap align-items-center gap-3">
+                    <form method="post" enctype="multipart/form-data" action="/pages/event_live_dashboard.php"
+                          class="d-flex align-items-center gap-2 flex-wrap mb-0">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="post_action" value="upload_floorplan">
+                        <input type="hidden" name="event_id" value="<?= $selectedEventId ?>">
+                        <label class="small fw-semibold mb-0" for="floorplan-input">
+                            <i class="bi bi-image me-1"></i>Saalfoto:
+                        </label>
+                        <input type="file" name="floorplan" id="floorplan-input" accept="image/*"
+                               class="form-control form-control-sm" style="max-width:240px;" required>
+                        <button type="submit" class="btn btn-sm btn-outline-dark">Hochladen</button>
+                    </form>
+                    <span class="text-muted small ms-md-auto">
+                        <i class="bi bi-hand-index-thumb me-1"></i>Tisch anklicken und ziehen, um ihn zu platzieren.
+                    </span>
+                </div>
+            </div>
+            <div class="editor-canvas <?= !empty($currentEvent['tischplan_bild']) ? 'has-photo' : '' ?>"
+                 id="editor-canvas"
+                 <?php if (!empty($currentEvent['tischplan_bild'])): ?>
+                 style="background-image:url('/uploads/<?= htmlspecialchars($currentEvent['tischplan_bild']) ?>')"
+                 <?php endif; ?>>
+                <?php foreach ($grid['tables'] as $tisch):
+                    $belegt = count(array_filter($tisch['seats'], fn($s) => $s['farbe'] !== 'rot'));
+                    $total  = count($tisch['seats']);
+                ?>
+                <div class="editor-chip" data-editor-table="<?= $tisch['table_id'] ?>"
+                     style="left:<?= $tisch['pos_x'] ?>%;top:<?= $tisch['pos_y'] ?>%;">
+                    T<?= (int)$tisch['tischnummer'] ?> <span class="opacity-75">(<?= $belegt ?>/<?= $total ?>)</span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php if (empty($currentEvent['tischplan_bild'])): ?>
+            <p class="text-muted small mt-2">
+                <i class="bi bi-info-circle me-1"></i>Noch kein Saalfoto hochgeladen – die Tische lassen sich schon
+                jetzt frei anordnen, auf dem karierten Hintergrund. Ein Foto könnt ihr jederzeit nachreichen.
+            </p>
+            <?php endif; ?>
+        </div>
+
         <?php endif; ?>
 
     <?php else: /* freie_tickets */ ?>
@@ -278,12 +428,118 @@ include __DIR__ . '/../includes/navbar.php';
 </div>
 
 <?php
-$jsEid = json_encode($selectedEventId);
+$jsEid  = json_encode($selectedEventId);
+$jsCsrf = json_encode(generateCsrfToken());
 $extraScripts = <<<'JS'
 <script>
 (function () {
     'use strict';
     var EVENT_ID = __EVENT_ID__;
+    var CSRF     = __CSRF__;
+
+    // ─── Sitzplan-Modus umschalten ─────────────────────────────────────────
+    var modeAuto   = document.getElementById('mode-auto');
+    var modeEditor = document.getElementById('mode-editor');
+    document.querySelectorAll('[data-mode-btn]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var mode = btn.getAttribute('data-mode-btn');
+            document.querySelectorAll('[data-mode-btn]').forEach(function (b) {
+                b.classList.toggle('active', b === btn);
+            });
+            if (modeAuto)   modeAuto.style.display   = mode === 'auto'   ? '' : 'none';
+            if (modeEditor) modeEditor.style.display = mode === 'editor' ? '' : 'none';
+            var url = new URL(window.location.href);
+            url.searchParams.set('mode', mode);
+            window.history.replaceState({}, '', url);
+        });
+    });
+
+    // ─── Tisch-Kachel aufklappen (Automatisch-Modus) ───────────────────────
+    document.querySelectorAll('[data-table-toggle]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-table-toggle');
+            var seats = document.getElementById('table-seats-' + id);
+            var open = btn.getAttribute('aria-expanded') === 'true';
+            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+            if (seats) seats.style.display = open ? 'none' : 'flex';
+        });
+    });
+
+    // Kachel-Balken/Zähler aus dem aktuellen (auch eingeklappten) DOM-Zustand
+    // neu berechnen – läuft nach jedem Poll, damit die Übersicht live bleibt,
+    // ohne dass die Kachel dafür aufgeklappt sein muss.
+    function recomputeTableBar(tableId) {
+        var seats = document.getElementById('table-seats-' + tableId);
+        var barWrap = document.querySelector('[data-table-bar="' + tableId + '"]');
+        var countsEl = document.querySelector('[data-table-counts="' + tableId + '"]');
+        if (!seats || !barWrap) return;
+        var counts = { rot: 0, gelb: 0, gruen: 0 };
+        seats.querySelectorAll('[data-seat-key]').forEach(function (el) {
+            if (el.classList.contains('tile-gruen')) counts.gruen++;
+            else if (el.classList.contains('tile-gelb')) counts.gelb++;
+            else counts.rot++;
+        });
+        var total = Math.max(1, counts.rot + counts.gelb + counts.gruen);
+        var gruenEl = barWrap.querySelector('[data-bar-gruen]');
+        var gelbEl  = barWrap.querySelector('[data-bar-gelb]');
+        var rotEl   = barWrap.querySelector('[data-bar-rot]');
+        if (gruenEl) gruenEl.style.width = Math.round(counts.gruen / total * 100) + '%';
+        if (gelbEl)  gelbEl.style.width  = Math.round(counts.gelb  / total * 100) + '%';
+        if (rotEl)   rotEl.style.width   = Math.round(counts.rot   / total * 100) + '%';
+        if (countsEl) {
+            countsEl.textContent = counts.gruen + ' eingecheckt · ' + counts.gelb + ' verkauft · ' + counts.rot + ' frei';
+        }
+    }
+
+    // ─── Editor: Tische per Zeigergeräte (Maus/Touch) verschieben ──────────
+    var canvas = document.getElementById('editor-canvas');
+    if (canvas) {
+        var dragChip = null;
+
+        canvas.querySelectorAll('.editor-chip').forEach(function (chip) {
+            chip.addEventListener('pointerdown', function (e) {
+                dragChip = chip;
+                chip.classList.add('dragging');
+                chip.setPointerCapture(e.pointerId);
+            });
+        });
+
+        canvas.addEventListener('pointermove', function (e) {
+            if (!dragChip) return;
+            var rect = canvas.getBoundingClientRect();
+            var x = ((e.clientX - rect.left) / rect.width) * 100;
+            var y = ((e.clientY - rect.top) / rect.height) * 100;
+            x = Math.max(0, Math.min(100, x));
+            y = Math.max(0, Math.min(100, y));
+            dragChip.style.left = x + '%';
+            dragChip.style.top  = y + '%';
+        });
+
+        function endDrag() {
+            if (!dragChip) return;
+            var chip = dragChip;
+            dragChip = null;
+            chip.classList.remove('dragging');
+
+            var tableId = chip.getAttribute('data-editor-table');
+            var x = parseFloat(chip.style.left);
+            var y = parseFloat(chip.style.top);
+
+            var fd = new FormData();
+            fd.append('table_id', tableId);
+            fd.append('pos_x', x);
+            fd.append('pos_y', y);
+            fd.append('csrf_token', CSRF);
+
+            fetch('/api/tischplan_position.php', {
+                method: 'POST', body: fd, credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            }).catch(function () { /* nächste Verschiebung versucht es erneut */ });
+        }
+
+        canvas.addEventListener('pointerup', endDrag);
+        canvas.addEventListener('pointercancel', endDrag);
+    }
 
     // ─── QR-Modal ──────────────────────────────────────────────────────────
     function openTicketModal(reservationId) {
@@ -454,6 +710,7 @@ $extraScripts = <<<'JS'
                 var el = document.querySelector('[data-seat-key="' + seat.seat_id + '"]');
                 if (el) updateTile(el, seat.farbe, seat.reservation_id, seat.gast, seat.buchungsnummer);
             });
+            recomputeTableBar(table.table_id);
         });
 
         var grid = document.getElementById('ticket-grid');
@@ -497,7 +754,7 @@ $extraScripts = <<<'JS'
 })();
 </script>
 JS;
-$extraScripts = str_replace('__EVENT_ID__', $jsEid, $extraScripts);
+$extraScripts = str_replace(['__EVENT_ID__', '__CSRF__'], [$jsEid, $jsCsrf], $extraScripts);
 
 include __DIR__ . '/../includes/footer.php';
 ?>

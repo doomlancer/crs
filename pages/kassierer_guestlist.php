@@ -286,22 +286,8 @@ include __DIR__ . '/../includes/navbar.php';
                            value="<?= htmlspecialchars($suche) ?>">
                 </div>
 
-                <!-- Status-Filter -->
-                <div class="col-12 col-md-3 col-lg-3">
-                    <label for="status" class="form-label small fw-semibold">
-                        <i class="bi bi-funnel me-1"></i>Status
-                    </label>
-                    <select name="status" id="status" class="form-select form-select-sm">
-                        <option value="">Alle</option>
-                        <option value="geplant"     <?= $statusFilter === 'geplant'     ? 'selected' : '' ?>>Geplant</option>
-                        <option value="eingecheckt" <?= $statusFilter === 'eingecheckt' ? 'selected' : '' ?>>Eingecheckt</option>
-                        <option value="offen"       <?= $statusFilter === 'offen'       ? 'selected' : '' ?>>Zahlung offen</option>
-                        <option value="bezahlt"     <?= $statusFilter === 'bezahlt'     ? 'selected' : '' ?>>Bezahlt</option>
-                    </select>
-                </div>
-
                 <!-- Buttons -->
-                <div class="col-12 col-md-1 col-lg-2 d-flex gap-2">
+                <div class="col-12 col-md-4 col-lg-5 d-flex gap-2">
                     <button type="submit" class="btn btn-warning btn-sm">
                         <i class="bi bi-search me-1"></i>Suchen
                     </button>
@@ -314,6 +300,30 @@ include __DIR__ . '/../includes/navbar.php';
                 </div>
 
             </form>
+
+            <!-- Status-Filter als Pillen: ein Klick statt Auswahlmenü + Suchen -->
+            <?php
+            $pillBase = '/pages/kassierer_guestlist.php?' . http_build_query(array_filter([
+                'event_id' => $selectedEventId ?: null,
+                'suche'    => $suche !== '' ? $suche : null,
+            ]));
+            $pillSep = str_contains($pillBase, '?') ? '&' : '?';
+            $pills = [
+                ''            => 'Alle',
+                'geplant'     => 'Geplant',
+                'eingecheckt' => 'Eingecheckt',
+                'offen'       => 'Zahlung offen',
+                'bezahlt'     => 'Bezahlt',
+            ];
+            ?>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <?php foreach ($pills as $val => $label): ?>
+                <a href="<?= htmlspecialchars($pillBase . ($val !== '' ? $pillSep . 'status=' . $val : '')) ?>"
+                   class="btn btn-sm rounded-pill <?= $statusFilter === $val ? 'btn-warning' : 'btn-outline-secondary' ?>">
+                    <?= htmlspecialchars($label) ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
 
@@ -452,7 +462,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <!-- Aktionen -->
                         <td class="text-end pe-3 text-nowrap">
 
-                            <!-- Check-in Button -->
+                            <!-- Dominante Aktion: entweder Check-in-Button ODER Status-Anzeige -->
                             <?php if ($g['res_status'] !== 'eingecheckt'): ?>
                             <form method="POST" action="" class="d-inline">
                                 <?= csrfField() ?>
@@ -462,11 +472,10 @@ include __DIR__ . '/../includes/navbar.php';
                                 <input type="hidden" name="suche"          value="<?= htmlspecialchars($suche) ?>">
                                 <input type="hidden" name="status_filter"  value="<?= htmlspecialchars($statusFilter) ?>">
                                 <button type="submit"
-                                        class="btn btn-sm btn-success"
+                                        class="btn btn-sm btn-success fw-semibold"
                                         title="Check-in durchführen"
                                         data-confirm="Check-in für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> bestätigen?">
-                                    <i class="bi bi-person-check-fill"></i>
-                                    <span class="d-none d-lg-inline ms-1">Check-in</span>
+                                    <i class="bi bi-person-check-fill me-1"></i>Check-in
                                 </button>
                             </form>
                             <?php else: ?>
@@ -475,7 +484,14 @@ include __DIR__ . '/../includes/navbar.php';
                             </span>
                             <?php endif; ?>
 
-                            <!-- Bezahlt-Button: nur für bar/ueberweisung mit offener Zahlung -->
+                            <!-- QR anzeigen (verlorenes Ticket erneut zeigen) – jetzt immer beschriftet -->
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
+                                    data-reservation-id="<?= (int)$g['id'] ?>"
+                                    title="QR-Code anzeigen">
+                                <i class="bi bi-qr-code me-1"></i>QR anzeigen
+                            </button>
+
+                            <!-- Bezahlt: sekundär, nur für bar/ueberweisung mit offener Zahlung -->
                             <?php
                             $zartActual = $g['zahlungsart'] ?? $g['user_zahlungsart'] ?? '';
                             $canMarkPaid = $g['payment_id']
@@ -491,25 +507,13 @@ include __DIR__ . '/../includes/navbar.php';
                                 <input type="hidden" name="suche"          value="<?= htmlspecialchars($suche) ?>">
                                 <input type="hidden" name="status_filter"  value="<?= htmlspecialchars($statusFilter) ?>">
                                 <button type="submit"
-                                        class="btn btn-sm btn-outline-primary"
+                                        class="btn btn-sm btn-link text-decoration-none"
                                         title="Als bezahlt markieren"
                                         data-confirm="Zahlung für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> als bezahlt markieren?">
-                                    <i class="bi bi-cash-coin"></i>
-                                    <span class="d-none d-lg-inline ms-1">Bezahlt</span>
+                                    Als bezahlt markieren
                                 </button>
                             </form>
-                            <?php elseif ($g['zahl_status'] === 'bezahlt'): ?>
-                            <span class="text-success small ms-1">
-                                <i class="bi bi-check2-circle me-1"></i>Bezahlt
-                            </span>
                             <?php endif; ?>
-
-                            <!-- QR anzeigen (verlorenes Ticket erneut zeigen) -->
-                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
-                                    data-reservation-id="<?= (int)$g['id'] ?>"
-                                    title="QR-Code anzeigen">
-                                <i class="bi bi-qr-code"></i>
-                            </button>
 
                         </td>
                     </tr>
