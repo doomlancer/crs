@@ -1,4 +1,9 @@
 # Kameruner-Tickets (CRS) – PHP/Apache App-Container
+#
+# 2026-10-23: Dieser Kommentar erzwingt einen Rebuild als Reaktion auf
+# CVE-2026-109618 / CVE-2026-109619 ("PHP2Shell", unauthentifizierte RCE,
+# behoben u.a. in PHP 8.2.35). Der unversionierte Tag unten zieht beim Build
+# automatisch den aktuellen Patch-Stand der 8.2-Reihe.
 FROM php:8.2-apache
 
 # --- System-Pakete + PHP-Extensions ---------------------------------------
