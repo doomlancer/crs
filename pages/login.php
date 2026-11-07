@@ -8,7 +8,7 @@ require_once __DIR__ . '/../includes/auth.php';
 
 // Bereits eingeloggt → weiterleiten
 if (isLoggedIn()) {
-    redirect('/pages/events.php');
+    redirect(startseiteFuerRolle($_SESSION['rolle'] ?? null));
 }
 
 $errors  = [];
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = loginUser($email, $passwort);
             if ($result === true) {
                 // Nach Login ggf. auf ursprünglich angefragte Seite weiterleiten
-                $redirect = $_SESSION['redirect_after_login'] ?? '/pages/events.php';
+                $redirect = $_SESSION['redirect_after_login'] ?? startseiteFuerRolle($_SESSION['rolle'] ?? null);
                 unset($_SESSION['redirect_after_login']);
                 setFlash('success', sprintf(__('auth.welcome_back'), htmlspecialchars($_SESSION['vorname'])));
                 redirect($redirect);

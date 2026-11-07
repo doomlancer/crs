@@ -1,52 +1,58 @@
 <?php
 /**
- * Meine Reservierungen - Übersicht für eingeloggte Benutzer
+ * Meine Tickets – Buchungen des eingeloggten Gastes, nach Veranstaltung
+ * gruppiert. Pro Person ein Ticket mit eigenem QR-Code; die QR-Codes öffnen
+ * sich groß in einem Fenster (auf dem Handy bildschirmfüllend).
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
-
-require_once __DIR__ . '/../includes/qrcode.php';
+require_once __DIR__ . '/../includes/ticket_karte.php';
 
 requireLogin();
 
 $pdo    = getDB();
 $userId = (int)$_SESSION['user_id'];
 
-// Reservierungen laden (neueste zuerst; LEFT JOIN damit freie Tickets ohne Sitzplatz erscheinen)
 $stmt = $pdo->prepare(
-    'SELECT r.id, r.seat_id, r.buchungsnummer, r.status, r.preis, r.erstellt_am,
+    'SELECT r.id, r.seat_id, r.buchungsnummer, r.status, r.preis, r.erstellt_am, r.event_id,
             e.name AS event_name, e.datum AS event_datum,
-            t.tischnummer,
-            s.sitzplatznummer,
-            p.zahlungsart, p.status AS payment_status, p.betrag
+            t.tischnummer, s.sitzplatznummer,
+            p.zahlungsart, p.status AS zahl_status, p.betrag
      FROM reservations r
      JOIN events e  ON r.event_id = e.id
      LEFT JOIN seats  s  ON r.seat_id  = s.id
      LEFT JOIN tables t  ON s.table_id = t.id
      LEFT JOIN payments p ON p.reservation_id = r.id
      WHERE r.user_id = ?
-     ORDER BY r.erstellt_am DESC'
+     ORDER BY e.datum ASC, t.tischnummer ASC, s.sitzplatznummer ASC, r.id ASC'
 );
 $stmt->execute([$userId]);
-$reservierungen = $stmt->fetchAll();
 
-// Wartelisten-Einträge laden
+// Nach Veranstaltung gruppieren – kommende zuerst, vergangene danach
+$gruppen = [];
+foreach ($stmt->fetchAll() as $r) {
+    $eid = (int)$r['event_id'];
+    $gruppen[$eid] ??= [
+        'event_id' => $eid, 'name' => $r['event_name'], 'datum' => $r['event_datum'],
+        'vergangen' => $r['event_datum'] < date('Y-m-d'), 'tickets' => [],
+    ];
+    $gruppen[$eid]['tickets'][] = $r;
+}
+usort($gruppen, fn($a, $b) => [$a['vergangen'], $a['vergangen'] ? -strtotime($a['datum']) : strtotime($a['datum'])]
+                          <=> [$b['vergangen'], $b['vergangen'] ? -strtotime($b['datum']) : strtotime($b['datum'])]);
+
 $stmtWl = $pdo->prepare(
-    'SELECT w.id, w.erstellt_am, e.id AS event_id, e.name AS event_name, e.datum AS event_datum
+    'SELECT w.id, w.erstellt_am, w.benachrichtigt_am, e.id AS event_id, e.name AS event_name, e.datum AS event_datum
      FROM waitlist w
      JOIN events e ON w.event_id = e.id
      WHERE w.user_id = ?
-     ORDER BY w.erstellt_am ASC'
+     ORDER BY e.datum ASC'
 );
 $stmtWl->execute([$userId]);
 $warteliste = $stmtWl->fetchAll();
 
-// Statistiken
-$gesamt     = count($reservierungen);
-$geplant    = count(array_filter($reservierungen, fn($r) => $r['status'] === 'geplant'));
-$eingecheckt = count(array_filter($reservierungen, fn($r) => $r['status'] === 'eingecheckt'));
-$gesamtBetrag = array_sum(array_column($reservierungen, 'betrag'));
+$nachname = (string)($_SESSION['nachname'] ?? '');
 
 $pageTitle = __('res.title');
 include __DIR__ . '/../includes/header.php';
@@ -54,321 +60,181 @@ include __DIR__ . '/../includes/navbar.php';
 ?>
 
 <main class="py-4">
-    <div class="container">
+    <div class="container" style="max-width:960px;">
         <?= getFlash() ?>
 
-        <div class="row mb-4">
-            <div class="col-12">
-                <h2 class="fw-bold">
-                    <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('res.title') ?>
-                </h2>
-                <p class="text-muted"><?= __('res.subtitle') ?></p>
-            </div>
+        <div class="mb-4">
+            <h1 class="h2 fw-bold mb-1">
+                <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('res.title') ?>
+            </h1>
+            <p class="text-muted mb-0"><?= __('res.subtitle') ?></p>
         </div>
 
-        <!-- KPI-Karten -->
-        <div class="row g-3 mb-4">
-            <div class="col-sm-3">
-                <div class="card text-center border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="display-6 fw-bold text-primary"><?= $gesamt ?></div>
-                        <small class="text-muted"><?= __('res.total') ?></small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-sm-3">
-                <div class="card text-center border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="display-6 fw-bold text-secondary"><?= $geplant ?></div>
-                        <small class="text-muted"><?= __('res.planned') ?></small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-sm-3">
-                <div class="card text-center border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="display-6 fw-bold text-success"><?= $eingecheckt ?></div>
-                        <small class="text-muted"><?= __('res.checked_in') ?></small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-sm-3">
-                <div class="card text-center border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="display-6 fw-bold text-warning"><?= formatBetrag($gesamtBetrag) ?></div>
-                        <small class="text-muted"><?= __('res.total_amount') ?></small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <?php if (empty($reservierungen)): ?>
+        <?php if (empty($gruppen)): ?>
         <div class="card border-0 shadow-sm">
             <div class="card-body text-center py-5">
                 <i class="bi bi-calendar-x display-3 text-muted d-block mb-3"></i>
-                <h5 class="text-muted"><?= __('res.empty_title') ?></h5>
+                <h2 class="h5 text-muted"><?= __('res.empty_title') ?></h2>
                 <p class="text-muted"><?= __('res.empty_text') ?></p>
                 <a href="/pages/events.php" class="btn btn-warning">
                     <i class="bi bi-calendar-event me-2"></i><?= __('res.discover_events') ?>
                 </a>
             </div>
         </div>
-        <?php else: ?>
-
-        <?php
-        // PayPal-URL (einmal berechnen)
-        $paypalUrl = PAYPAL_SANDBOX
-            ? 'https://www.sandbox.paypal.com/cgi-bin/webscr'
-            : 'https://www.paypal.com/cgi-bin/webscr';
-        // Alle offenen PayPal-Buchungen zählen (für "Alle auswählen" Checkbox)
-        $paypalOffenCount = count(array_filter($reservierungen, fn($r) =>
-            ($r['zahlungsart'] ?? '') === 'paypal' && ($r['payment_status'] ?? '') === 'offen'
-        ));
-        ?>
-
-        <!-- Reservierungen Tabelle -->
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-dark">
-                            <tr>
-                                <th class="ps-3" style="width:42px;">
-                                    <?php if ($paypalOffenCount > 1): ?>
-                                    <input type="checkbox" id="selectAllPaypal" class="form-check-input"
-                                           title="<?= htmlspecialchars(__('res.select_all_paypal_title')) ?>">
-                                    <?php endif; ?>
-                                </th>
-                                <th><?= __('res.booking_number') ?></th>
-                                <th><?= __('res.event') ?></th>
-                                <th><?= __('res.date') ?></th>
-                                <th><?= __('res.seat_ticket_header') ?></th>
-                                <th><?= __('res.payment_method') ?></th>
-                                <th><?= __('res.amount') ?></th>
-                                <th><?= __('res.booking_status') ?></th>
-                                <th><?= __('res.payment_status') ?></th>
-                                <th><?= __('res.actions') ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($reservierungen as $res):
-                                $isPaypalOffen = ($res['zahlungsart'] ?? '') === 'paypal'
-                                             && ($res['payment_status'] ?? '') === 'offen';
-                                $betrag = (float)($res['betrag'] ?? 0);
-                            ?>
-                            <tr>
-                                <td class="ps-3">
-                                    <?php if ($isPaypalOffen): ?>
-                                    <input type="checkbox" class="form-check-input paypal-select"
-                                           value="<?= htmlspecialchars($res['buchungsnummer']) ?>"
-                                           data-amount="<?= number_format($betrag, 2, '.', '') ?>"
-                                           data-name="<?= htmlspecialchars($res['event_name'] . ' – ' . $res['buchungsnummer']) ?>">
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <code class="fs-6 text-primary fw-bold"><?= htmlspecialchars($res['buchungsnummer']) ?></code>
-                                    <button class="btn btn-link btn-sm p-0 ms-2 text-muted"
-                                            type="button"
-                                            data-bs-toggle="collapse"
-                                            data-bs-target="#qr-<?= $res['id'] ?>"
-                                            title="<?= htmlspecialchars(__('res.show_qr_title')) ?>">
-                                        <i class="bi bi-qr-code"></i>
-                                    </button>
-                                </td>
-                                <td><?= htmlspecialchars($res['event_name']) ?></td>
-                                <td>
-                                    <span class="badge bg-warning text-dark">
-                                        <?= formatDatum($res['event_datum']) ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <?php if ($res['seat_id'] === null): ?>
-                                    <span class="badge bg-success">
-                                        <i class="bi bi-ticket-perforated me-1"></i><?= __('res.free_ticket_badge') ?>
-                                    </span>
-                                    <?php else: ?>
-                                    <i class="bi bi-grid text-muted me-1"></i>
-                                    <?= sprintf(__('res.table_seat_combo'), (int)$res['tischnummer'], (int)$res['sitzplatznummer']) ?>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php
-                                    $icon = match($res['zahlungsart'] ?? '') {
-                                        'paypal'       => 'bi-paypal text-primary',
-                                        'ueberweisung' => 'bi-bank text-info',
-                                        default        => 'bi-cash text-success',
-                                    };
-                                    ?>
-                                    <i class="bi <?= $icon ?> me-1"></i>
-                                    <?= zahlungsartLabel($res['zahlungsart'] ?? 'bar') ?>
-                                </td>
-                                <td class="fw-bold"><?= formatBetrag($betrag) ?></td>
-                                <td><?= statusBadge($res['status']) ?></td>
-                                <td><?= statusBadge($res['payment_status'] ?? 'offen') ?></td>
-                                <td>
-                                    <?php if ($res['status'] === 'geplant'): ?>
-                                    <form method="POST" action="/api/reserve_seat.php"
-                                          data-confirm="<?= htmlspecialchars(__('res.cancel_confirm'), ENT_QUOTES) ?>">
-                                        <?= csrfField() ?>
-                                        <input type="hidden" name="action" value="cancel">
-                                        <input type="hidden" name="event_id" value="">
-                                        <input type="hidden" name="reservation_id" value="<?= $res['id'] ?>">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-x-circle me-1"></i><?= __('res.cancel') ?>
-                                        </button>
-                                    </form>
-                                    <?php else: ?>
-                                    <span class="text-muted small">–</span>
-                                    <?php endif; ?>
-                                    <?php if ($isPaypalOffen): ?>
-                                    <form action="<?= $paypalUrl ?>" method="post" target="_blank" class="mt-1">
-                                        <input type="hidden" name="cmd"           value="_xclick">
-                                        <input type="hidden" name="business"      value="<?= htmlspecialchars(PAYPAL_EMAIL) ?>">
-                                        <input type="hidden" name="item_name"     value="<?= htmlspecialchars($res['event_name'] . ' – ' . $res['buchungsnummer']) ?>">
-                                        <input type="hidden" name="item_number"   value="<?= htmlspecialchars($res['buchungsnummer']) ?>">
-                                        <input type="hidden" name="amount"        value="<?= number_format($betrag, 2, '.', '') ?>">
-                                        <input type="hidden" name="currency_code" value="EUR">
-                                        <input type="hidden" name="return"        value="<?= APP_URL ?>/pages/meine_reservierungen.php">
-                                        <input type="hidden" name="cancel_return" value="<?= APP_URL ?>/pages/meine_reservierungen.php">
-                                        <input type="hidden" name="notify_url"    value="<?= APP_URL ?>/api/paypal_ipn.php">
-                                        <input type="hidden" name="custom"        value="<?= htmlspecialchars($res['buchungsnummer']) ?>">
-                                        <input type="hidden" name="no_shipping"   value="1">
-                                        <input type="hidden" name="lc"            value="DE">
-                                        <button type="submit" class="btn btn-primary btn-sm">
-                                            <i class="bi bi-paypal me-1"></i><?= __('res.pay_button') ?>
-                                        </button>
-                                    </form>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                            <!-- Detail-Zeile -->
-                            <tr class="bg-light">
-                                <td colspan="10" class="py-1">
-                                    <small class="text-muted">
-                                        <i class="bi bi-clock me-1"></i>
-                                        <?= htmlspecialchars(sprintf(__('res.reserved_at_full'), date('d.m.Y H:i', strtotime($res['erstellt_am'])))) ?>
-                                        <?php if (($res['zahlungsart'] ?? '') === 'ueberweisung' && ($res['payment_status'] ?? '') === 'offen'): ?>
-                                        | <span class="text-warning fw-bold">
-                                            <i class="bi bi-exclamation-triangle me-1"></i>
-                                            <?= sprintf(__('res.transfer_hint'), formatBetrag($betrag), htmlspecialchars($res['buchungsnummer'])) ?>
-                                        </span>
-                                        <?php endif; ?>
-                                    </small>
-                                </td>
-                            </tr>
-                            <tr class="collapse" id="qr-<?= $res['id'] ?>">
-                                <td colspan="10" class="bg-white text-center py-3">
-                                    <div class="d-inline-block text-center p-3 border rounded shadow-sm">
-                                        <?= qrCodeImg(ticketPayload($res['buchungsnummer']), 170, sprintf(__('res.qr_alt'), $res['buchungsnummer'])) ?>
-                                        <div class="mt-2">
-                                            <code class="fs-6 fw-bold text-primary"><?= htmlspecialchars($res['buchungsnummer']) ?></code><br>
-                                            <small class="text-muted"><?= htmlspecialchars($res['event_name']) ?> · <?= formatDatum($res['event_datum']) ?></small>
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sticky PayPal Multi-Zahlungs-Bar (erscheint wenn ≥1 Checkbox aktiv) -->
-        <div id="paypal-bar" class="d-none position-fixed bottom-0 start-0 end-0 bg-dark text-white shadow-lg px-3 py-2 d-flex align-items-center justify-content-between flex-wrap gap-2" style="z-index:1050;"
-             data-label-singular="<?= htmlspecialchars(__('res.booking_singular')) ?>"
-             data-label-plural="<?= htmlspecialchars(__('res.booking_plural')) ?>">
-            <div class="d-flex align-items-center gap-3">
-                <i class="bi bi-paypal fs-4 text-primary"></i>
-                <div>
-                    <div class="fw-bold">
-                        <span id="bar-count">0 <?= __('res.booking_plural') ?></span> <?= __('res.selected_suffix') ?>
-                    </div>
-                    <div class="small text-white-50"><?= __('res.total') ?>: <strong id="bar-total" class="text-white">0,00 €</strong></div>
-                </div>
-            </div>
-            <div class="d-flex gap-2 align-items-center">
-                <button type="button" class="btn btn-sm btn-outline-light" id="bar-clear">
-                    <i class="bi bi-x me-1"></i><?= __('res.clear_selection') ?>
-                </button>
-                <!-- PayPal-Formular wird per JS dynamisch befüllt und abgesendet -->
-                <form id="paypal-multi-form" action="<?= $paypalUrl ?>" method="post" target="_blank">
-                    <input type="hidden" name="business"      value="<?= htmlspecialchars(PAYPAL_EMAIL) ?>">
-                    <input type="hidden" name="currency_code" value="EUR">
-                    <input type="hidden" name="return"        value="<?= APP_URL ?>/pages/meine_reservierungen.php">
-                    <input type="hidden" name="cancel_return" value="<?= APP_URL ?>/pages/meine_reservierungen.php">
-                    <input type="hidden" name="notify_url"    value="<?= APP_URL ?>/api/paypal_ipn.php">
-                    <input type="hidden" name="no_shipping"   value="1">
-                    <input type="hidden" name="lc"            value="DE">
-                    <button type="submit" id="bar-pay-btn" class="btn btn-primary">
-                        <i class="bi bi-paypal me-2"></i><?= __('res.pay_with_paypal') ?>
-                    </button>
-                </form>
-            </div>
-        </div>
-
         <?php endif; ?>
+
+        <div class="d-flex flex-column gap-4">
+        <?php foreach ($gruppen as $g):
+            $aktive  = array_values(array_filter($g['tickets'], fn($t) => in_array($t['status'], ['geplant', 'eingecheckt'], true)));
+            $offen   = 0.0;
+            $summe   = 0.0;
+            foreach ($aktive as $t) {
+                $betrag = (float)($t['betrag'] ?? $t['preis']);
+                $summe += $betrag;
+                if ($t['status'] === 'geplant' && ($t['zahl_status'] ?? 'offen') === 'offen') $offen += $betrag;
+            }
+            $zahlungsart = $aktive[0]['zahlungsart'] ?? 'bar';
+            $modalId = 'tickets-' . $g['event_id'];
+        ?>
+            <section class="card border-0 shadow-sm">
+                <div class="card-body d-flex flex-column gap-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                        <div>
+                            <h2 class="h5 fw-bold mb-1"><?= htmlspecialchars($g['name']) ?></h2>
+                            <div class="text-muted small">
+                                <i class="bi bi-calendar3 me-1"></i><?= formatDatum($g['datum']) ?>
+                                <?php if ($g['vergangen']): ?> · <?= __('res.past') ?><?php endif; ?>
+                                · <?= htmlspecialchars(sprintf(__('res.tickets_count'), count($aktive))) ?>
+                                <?php if ($summe > 0): ?> · <?= formatBetrag($summe) ?><?php endif; ?>
+                            </div>
+                        </div>
+                        <?php if ($aktive && !$g['vergangen']): ?>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-warning fw-semibold" data-bs-toggle="modal" data-bs-target="#<?= $modalId ?>">
+                                <i class="bi bi-qr-code me-1"></i><?= htmlspecialchars(sprintf(__('res.show_all_qr'), count($aktive))) ?>
+                            </button>
+                            <a class="btn btn-outline-secondary" href="<?= htmlspecialchars(ticketLinkUrl($userId, $g['event_id'])) ?>"
+                               title="<?= htmlspecialchars(__('res.ticket_link_title')) ?>">
+                                <i class="bi bi-link-45deg me-1"></i><?= __('res.ticket_link') ?>
+                            </a>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($offen > 0 && !$g['vergangen']): ?>
+                    <?= renderZahlungshinweis($zahlungsart, $offen, array_column($aktive, 'buchungsnummer'), $nachname) ?>
+                    <?php endif; ?>
+
+                    <ul class="list-group list-group-flush">
+                    <?php foreach ($g['tickets'] as $t):
+                        $aktiv = in_array($t['status'], ['geplant', 'eingecheckt'], true);
+                    ?>
+                        <li class="list-group-item px-0 d-flex flex-wrap align-items-center gap-2 <?= $aktiv ? '' : 'text-muted' ?>">
+                            <div class="flex-grow-1" style="min-width:12rem;">
+                                <div class="fw-semibold">
+                                    <?php if ($t['seat_id'] === null): ?>
+                                        <i class="bi bi-ticket-perforated me-1"></i><?= __('res.free_ticket_badge') ?>
+                                    <?php else: ?>
+                                        <i class="bi bi-grid me-1 text-muted"></i><?= sprintf(__('res.table_seat_combo'), (int)$t['tischnummer'], (int)$t['sitzplatznummer']) ?>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="small text-muted font-monospace"><?= htmlspecialchars($t['buchungsnummer']) ?></div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1 align-items-center">
+                                <?= statusBadge($t['status']) ?>
+                                <?php if ($aktiv): ?><?= statusBadge($t['zahl_status'] ?? 'offen') ?><?php endif; ?>
+                            </div>
+                            <div class="d-flex gap-2 ms-auto">
+                                <?php if ($aktiv && !$g['vergangen']): ?>
+                                <button type="button" class="btn btn-sm btn-outline-dark"
+                                        data-ticket-show="<?= htmlspecialchars($t['buchungsnummer']) ?>" data-ticket-modal="<?= $modalId ?>">
+                                    <i class="bi bi-qr-code me-1"></i>QR
+                                </button>
+                                <?php endif; ?>
+                                <?php if ($t['status'] === 'geplant' && !$g['vergangen']): ?>
+                                <form method="POST" action="/api/reserve_seat.php" class="m-0"
+                                      data-confirm="<?= htmlspecialchars(__('res.cancel_confirm'), ENT_QUOTES) ?>">
+                                    <?= csrfField() ?>
+                                    <input type="hidden" name="action" value="cancel">
+                                    <input type="hidden" name="reservation_id" value="<?= (int)$t['id'] ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-x-circle me-1"></i><?= __('res.cancel') ?>
+                                    </button>
+                                </form>
+                                <?php endif; ?>
+                            </div>
+                        </li>
+                    <?php endforeach; ?>
+                    </ul>
+                </div>
+            </section>
+
+            <?php if ($aktive && !$g['vergangen']): ?>
+            <div class="modal fade" id="<?= $modalId ?>" tabindex="-1" aria-labelledby="<?= $modalId ?>-titel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 class="modal-title h5 fw-bold" id="<?= $modalId ?>-titel"><?= htmlspecialchars($g['name']) ?></h2>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="<?= htmlspecialchars(__('general.close')) ?>"></button>
+                        </div>
+                        <div class="modal-body bg-light">
+                            <p class="small text-center mb-3"><i class="bi bi-brightness-high me-1"></i><?= htmlspecialchars(__('ticket.hint')) ?></p>
+                            <div class="d-flex flex-column gap-3">
+                                <?php foreach ($aktive as $i => $t): ?>
+                                <?= renderTicketKarte($t, $i + 1, count($aktive), count($aktive) > 1) ?>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+        <?php endforeach; ?>
+        </div>
 
         <?php if (!empty($warteliste)): ?>
-        <!-- Warteliste -->
-        <div class="card border-0 shadow-sm mt-4">
-            <div class="card-header bg-info text-white fw-bold">
-                <i class="bi bi-hourglass-split me-2"></i><?= __('res.waitlist_title') ?>
+        <section class="card border-0 shadow-sm mt-4">
+            <div class="card-body">
+                <h2 class="h5 fw-bold mb-3"><i class="bi bi-hourglass-split text-warning me-2"></i><?= __('res.waitlist_title') ?></h2>
+                <ul class="list-group list-group-flush">
+                    <?php foreach ($warteliste as $wl): ?>
+                    <li class="list-group-item px-0 d-flex flex-wrap align-items-center gap-2">
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold"><?= htmlspecialchars($wl['event_name']) ?> · <?= formatDatum($wl['event_datum']) ?></div>
+                            <div class="small text-muted">
+                                <?php if ($wl['benachrichtigt_am']): ?>
+                                    <span class="text-success fw-semibold"><?= htmlspecialchars(sprintf(__('res.waitlist_notified'), date('d.m.Y H:i', strtotime($wl['benachrichtigt_am'])))) ?></span>
+                                <?php else: ?>
+                                    <?= htmlspecialchars(__('res.waitlist_waiting')) ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php if ($wl['benachrichtigt_am']): ?>
+                        <a class="btn btn-sm btn-warning" href="/pages/tischplan.php?event_id=<?= (int)$wl['event_id'] ?>"><?= __('res.book_now') ?></a>
+                        <?php endif; ?>
+                        <form method="POST" action="/api/join_waitlist.php" class="m-0"
+                              data-confirm="<?= htmlspecialchars(__('res.waitlist_confirm'), ENT_QUOTES) ?>">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="action" value="leave">
+                            <input type="hidden" name="event_id" value="<?= (int)$wl['event_id'] ?>">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-x-circle me-1"></i><?= __('res.waitlist_remove') ?>
+                            </button>
+                        </form>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
             </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-secondary">
-                            <tr>
-                                <th><?= __('res.event') ?></th>
-                                <th><?= __('res.date') ?></th>
-                                <th><?= __('res.added_at') ?></th>
-                                <th><?= __('res.waitlist_action_header') ?></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($warteliste as $wl): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($wl['event_name']) ?></td>
-                                <td><span class="badge bg-warning text-dark"><?= formatDatum($wl['event_datum']) ?></span></td>
-                                <td><small class="text-muted"><?= htmlspecialchars(sprintf(__('general.datetime_uhr'), date('d.m.Y H:i', strtotime($wl['erstellt_am'])))) ?></small></td>
-                                <td>
-                                    <form method="POST" action="/api/join_waitlist.php"
-                                          data-confirm="<?= htmlspecialchars(__('res.waitlist_confirm'), ENT_QUOTES) ?>">
-                                        <?= csrfField() ?>
-                                        <input type="hidden" name="action" value="leave">
-                                        <input type="hidden" name="event_id" value="<?= $wl['event_id'] ?>">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-x-circle me-1"></i><?= __('res.waitlist_remove') ?>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+        </section>
         <?php endif; ?>
 
-        <!-- Quick Actions -->
-        <div class="row mt-4 g-3">
-            <div class="col-md-4">
-                <a href="/pages/events.php" class="btn btn-outline-warning w-100">
-                    <i class="bi bi-calendar-event me-2"></i><?= __('res.new_reservation') ?>
-                </a>
-            </div>
-            <div class="col-md-4">
-                <a href="/pages/tischplan.php" class="btn btn-outline-secondary w-100">
-                    <i class="bi bi-grid-3x3 me-2"></i><?= __('res.to_seating_plan') ?>
-                </a>
-            </div>
-            <div class="col-md-4">
-                <a href="/pages/profil.php" class="btn btn-outline-primary w-100">
-                    <i class="bi bi-person me-2"></i><?= __('res.my_profile') ?>
-                </a>
-            </div>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <a href="/pages/events.php" class="btn btn-outline-warning">
+                <i class="bi bi-calendar-event me-2"></i><?= __('res.new_reservation') ?>
+            </a>
+            <a href="/pages/profil.php" class="btn btn-outline-secondary">
+                <i class="bi bi-person me-2"></i><?= __('res.my_profile') ?>
+            </a>
         </div>
     </div>
 </main>
@@ -376,104 +242,19 @@ include __DIR__ . '/../includes/navbar.php';
 <?php
 $extraScripts = <<<'HTML'
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // QR-Codes werden serverseitig erzeugt (includes/qrcode.php) – kein JS nötig.
-
-    // ─── Multi-PayPal Sticky Bar ──────────────────────────────────────────────
-    var bar      = document.getElementById('paypal-bar');
-    var barCount = document.getElementById('bar-count');
-    var barTotal = document.getElementById('bar-total');
-    var barClear = document.getElementById('bar-clear');
-    var form     = document.getElementById('paypal-multi-form');
-    var selectAll = document.getElementById('selectAllPaypal');
-
-    if (!bar) return; // keine offenen PayPal-Buchungen
-
-    function getChecked() {
-        return Array.from(document.querySelectorAll('.paypal-select:checked'));
-    }
-
-    function updateBar() {
-        var checked = getChecked();
-        if (checked.length === 0) {
-            bar.classList.add('d-none');
-            return;
-        }
-        bar.classList.remove('d-none');
-        var total = checked.reduce(function(s, cb) { return s + parseFloat(cb.dataset.amount); }, 0);
-        var label = checked.length === 1 ? bar.dataset.labelSingular : bar.dataset.labelPlural;
-        barCount.textContent = checked.length + ' ' + label;
-        barTotal.textContent = total.toFixed(2).replace('.', ',') + ' €';
-
-        // Synchronise "Alle auswählen" Indeterminate-Zustand
-        var all = document.querySelectorAll('.paypal-select');
-        if (selectAll) {
-            selectAll.checked = checked.length === all.length;
-            selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
-        }
-    }
-
-    document.querySelectorAll('.paypal-select').forEach(function(cb) {
-        cb.addEventListener('change', updateBar);
-    });
-
-    if (selectAll) {
-        selectAll.addEventListener('change', function() {
-            document.querySelectorAll('.paypal-select').forEach(function(cb) {
-                cb.checked = selectAll.checked;
-            });
-            updateBar();
+// "QR" an einem einzelnen Ticket: Fenster des Events öffnen und zum Ticket springen
+document.querySelectorAll('[data-ticket-show]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var modalEl = document.getElementById(btn.getAttribute('data-ticket-modal'));
+        if (!modalEl || !window.bootstrap) return;
+        var ziel = document.getElementById('ticket-' + btn.getAttribute('data-ticket-show'));
+        modalEl.addEventListener('shown.bs.modal', function handler() {
+            modalEl.removeEventListener('shown.bs.modal', handler);
+            if (ziel) ziel.scrollIntoView({ block: 'start' });
         });
-    }
-
-    if (barClear) {
-        barClear.addEventListener('click', function() {
-            document.querySelectorAll('.paypal-select').forEach(function(cb) { cb.checked = false; });
-            if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
-            updateBar();
-        });
-    }
-
-    // Beim Abschicken: PayPal-Felder dynamisch befüllen
-    form.addEventListener('submit', function(e) {
-        var checked = getChecked();
-        if (checked.length === 0) { e.preventDefault(); return; }
-
-        // Alte dynamische Felder entfernen
-        form.querySelectorAll('.pp-dyn').forEach(function(el) { el.remove(); });
-
-        function addHidden(name, val) {
-            var inp = document.createElement('input');
-            inp.type = 'hidden';
-            inp.name = name;
-            inp.value = val;
-            inp.className = 'pp-dyn';
-            form.appendChild(inp);
-        }
-
-        if (checked.length === 1) {
-            addHidden('cmd',         '_xclick');
-            addHidden('item_name',   checked[0].dataset.name);
-            addHidden('item_number', checked[0].value);
-            addHidden('amount',      checked[0].dataset.amount);
-            addHidden('custom',      checked[0].value);
-        } else {
-            addHidden('cmd',    '_cart');
-            addHidden('upload', '1');
-            var bns = [];
-            checked.forEach(function(cb, i) {
-                var n = i + 1;
-                addHidden('item_name_'   + n, cb.dataset.name);
-                addHidden('amount_'      + n, cb.dataset.amount);
-                addHidden('quantity_'    + n, '1');
-                addHidden('item_number_' + n, cb.value);
-                bns.push(cb.value);
-            });
-            addHidden('custom', 'BATCH:' + bns.join(','));
-        }
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
     });
 });
-
 </script>
 HTML;
 include __DIR__ . '/../includes/footer.php';

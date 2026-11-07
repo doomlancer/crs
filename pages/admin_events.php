@@ -90,6 +90,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($name))  $errors[] = 'Name ist erforderlich.';
         if ($event_typ === 'tischplan' && $max_gaeste < 1) $errors[] = 'Max. Gäste muss mindestens 1 sein.';
 
+        // Typwechsel nur ohne Buchungen: Sitzplatz-Buchungen eines Tischplan-
+        // Events passen nicht zu einem Freiticket-Event (und umgekehrt) –
+        // vorher ließ sich ein Event mit 168 Buchungen kommentarlos umstellen.
+        if (empty($errors) && $id > 0) {
+            $stmtTyp = $pdo->prepare('SELECT event_typ FROM events WHERE id = ?');
+            $stmtTyp->execute([$id]);
+            $alterTyp = $stmtTyp->fetchColumn() ?: 'tischplan';
+            if ($alterTyp !== $event_typ) {
+                $stmtB = $pdo->prepare("SELECT COUNT(*) FROM reservations WHERE event_id = ? AND status <> 'storniert'");
+                $stmtB->execute([$id]);
+                if ((int)$stmtB->fetchColumn() > 0) {
+                    $errors[] = 'Der Event-Typ lässt sich nicht mehr ändern, weil bereits Buchungen bestehen.';
+                }
+            }
+        }
+
         if (empty($errors) && $id > 0) {
             try {
                 $stmt = $pdo->prepare(
@@ -276,6 +292,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
     }
 
+    // ── Tisch bearbeiten (Nummer, Anzahl Plätze) ─────────────────────────────
+    if ($postAction === 'edit_table') {
+        $table_id = (int)($_POST['table_id'] ?? 0);
+        $event_id = (int)($_POST['event_id'] ?? 0);
+        $nummer   = (int)($_POST['tischnummer'] ?? 0);
+        $plaetze  = (int)($_POST['max_plaetze'] ?? 0);
+
+        if ($nummer < 1 || $plaetze < 1 || $plaetze > MAX_PLAETZE_PRO_TISCH) {
+            setFlash('error', 'Tischnummer ab 1, Plätze zwischen 1 und ' . MAX_PLAETZE_PRO_TISCH . '.');
+            redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
+        }
+        try {
+            $pdo->beginTransaction();
+            $stmtS = $pdo->prepare(
+                'SELECT s.id, s.sitzplatznummer,
+                        (SELECT COUNT(*) FROM reservations r WHERE r.seat_id = s.id) AS buchungen
+                 FROM seats s JOIN `tables` t ON t.id = s.table_id
+                 WHERE s.table_id = ? AND t.event_id = ?
+                 ORDER BY s.sitzplatznummer FOR UPDATE'
+            );
+            $stmtS->execute([$table_id, $event_id]);
+            $sitze  = $stmtS->fetchAll();
+            $hoechste = $sitze ? (int)end($sitze)['sitzplatznummer'] : 0;
+
+            if ($plaetze > count($sitze)) {
+                // Plätze hinten anhängen
+                $ins = $pdo->prepare('INSERT INTO seats (table_id, sitzplatznummer) VALUES (?, ?)');
+                for ($n = $hoechste + 1, $neu = count($sitze); $neu < $plaetze; $n++, $neu++) {
+                    $ins->execute([$table_id, $n]);
+                }
+            } elseif ($plaetze < count($sitze)) {
+                // Nur hintere Plätze ohne jede Buchung (auch frühere) entfernen
+                $weg = array_slice($sitze, $plaetze);
+                foreach ($weg as $sitz) {
+                    if ((int)$sitz['buchungen'] > 0) {
+                        $pdo->rollBack();
+                        setFlash('error', 'Platz ' . (int)$sitz['sitzplatznummer'] . ' hat Buchungen und kann nicht entfernt werden.');
+                        redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
+                    }
+                }
+                $del = $pdo->prepare('DELETE FROM seats WHERE id = ?');
+                foreach ($weg as $sitz) $del->execute([$sitz['id']]);
+            }
+            $pdo->prepare('UPDATE `tables` SET tischnummer = ?, max_plaetze = ? WHERE id = ? AND event_id = ?')
+                ->execute([$nummer, $plaetze, $table_id, $event_id]);
+            $pdo->commit();
+            logAudit('UPDATE', 'tables', $table_id, json_encode(['tischnummer' => $nummer, 'max_plaetze' => $plaetze]));
+            setFlash('success', "Tisch {$nummer} gespeichert ({$plaetze} Plätze).");
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            error_log('Tisch bearbeiten fehlgeschlagen: ' . $e->getMessage());
+            setFlash('error', 'Tisch konnte nicht gespeichert werden – gibt es die Tischnummer schon?');
+        }
+        redirect('/pages/admin_events.php?action=tables&event_id=' . $event_id);
+    }
+
     // ── Tisch löschen ────────────────────────────────────────────────────────
     if ($postAction === 'delete_table') {
         $table_id = (int)($_POST['table_id'] ?? 0);
@@ -301,7 +373,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $event_id    = (int)($_POST['event_id'] ?? 0);
         $user_id     = (int)($_POST['user_id'] ?? 0);
         $seat_id     = (int)($_POST['seat_id'] ?? 0);
-        $zahlungsart = in_array($_POST['zahlungsart'] ?? '', ['bar','ueberweisung','paypal'])
+        $zahlungsart = in_array($_POST['zahlungsart'] ?? '', ['bar','ueberweisung'])
                        ? $_POST['zahlungsart'] : 'bar';
         $pay_status  = in_array($_POST['pay_status'] ?? '', ['offen','bezahlt'])
                        ? $_POST['pay_status'] : 'offen';
@@ -321,6 +393,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
+            // Preis des gewählten Events, nicht der globale Standardpreis
+            $stmtPreis = $pdo->prepare('SELECT preis FROM events WHERE id = ?');
+            $stmtPreis->execute([$event_id]);
+            $eventPreis = (float)($stmtPreis->fetchColumn() ?: TICKET_PREIS);
             try {
                 $pdo->beginTransaction();
                 $buchungsnummer = generateBuchungsnummer();
@@ -328,7 +404,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'INSERT INTO reservations (user_id, event_id, seat_id, buchungsnummer, status, preis)
                      VALUES (?,?,?,?,\'geplant\',?)'
                 );
-                $stmt->execute([$user_id, $event_id, $seat_id, $buchungsnummer, TICKET_PREIS]);
+                $stmt->execute([$user_id, $event_id, $seat_id, $buchungsnummer, $eventPreis]);
                 $resId = (int)$pdo->lastInsertId();
 
                 // Sitzplatz als reserviert markieren
@@ -337,12 +413,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Zahlung erstellen
                 $pdo->prepare(
                     'INSERT INTO payments (reservation_id, zahlungsart, status, betrag) VALUES (?,?,?,?)'
-                )->execute([$resId, $zahlungsart, $pay_status, TICKET_PREIS]);
+                )->execute([$resId, $zahlungsart, $pay_status, $eventPreis]);
 
                 $pdo->commit();
                 logAudit('CREATE', 'reservations', $resId,
                     json_encode(compact('buchungsnummer','event_id','user_id','seat_id')));
-                setFlash('success', "Reservierung {$buchungsnummer} erfolgreich erstellt.");
+                $pdo->prepare('DELETE FROM waitlist WHERE user_id = ? AND event_id = ?')->execute([$user_id, $event_id]);
+                sendReservierungsbestaetigung($user_id, $event_id, [$buchungsnummer]);
+                setFlash('success', "Reservierung {$buchungsnummer} erstellt, Ticket per E-Mail an den Gast verschickt.");
             } catch (PDOException $e) {
                 $pdo->rollBack();
                 // Details ins Log, nicht in den Browser: die PDO-Meldung nennt
@@ -565,16 +643,42 @@ include __DIR__ . '/../includes/navbar.php';
                                     </div>
                                     <small class="text-muted"><?= $pct ?>%</small>
                                 </td>
-                                <td>
+                                <td class="text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" title="Bearbeiten"
+                                            data-bs-toggle="collapse" data-bs-target="#edit-table-<?= (int)$t['id'] ?>">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
                                     <form method="post" class="d-inline"
                                           data-confirm="Tisch <?= (int)$t['tischnummer'] ?> wirklich löschen? Alle Sitzplätze und Reservierungen werden gelöscht!">
                                         <?= csrfField() ?>
                                         <input type="hidden" name="post_action" value="delete_table">
                                         <input type="hidden" name="table_id" value="<?= $t['id'] ?>">
                                         <input type="hidden" name="event_id" value="<?= $manageEvent['id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Löschen">
                                             <i class="bi bi-trash"></i>
                                         </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <tr class="collapse" id="edit-table-<?= (int)$t['id'] ?>">
+                                <td colspan="5" class="bg-light">
+                                    <form method="post" class="row g-2 align-items-end">
+                                        <?= csrfField() ?>
+                                        <input type="hidden" name="post_action" value="edit_table">
+                                        <input type="hidden" name="table_id" value="<?= (int)$t['id'] ?>">
+                                        <input type="hidden" name="event_id" value="<?= (int)$manageEvent['id'] ?>">
+                                        <div class="col-auto">
+                                            <label class="form-label small mb-0" for="tn-<?= (int)$t['id'] ?>">Tischnummer</label>
+                                            <input type="number" min="1" name="tischnummer" id="tn-<?= (int)$t['id'] ?>" class="form-control form-control-sm" style="width:7rem" value="<?= (int)$t['tischnummer'] ?>" required>
+                                        </div>
+                                        <div class="col-auto">
+                                            <label class="form-label small mb-0" for="tp-<?= (int)$t['id'] ?>">Plätze</label>
+                                            <input type="number" min="1" max="<?= MAX_PLAETZE_PRO_TISCH ?>" name="max_plaetze" id="tp-<?= (int)$t['id'] ?>" class="form-control form-control-sm" style="width:7rem" value="<?= (int)$t['sitze_gesamt'] ?>" required>
+                                        </div>
+                                        <div class="col-auto">
+                                            <button type="submit" class="btn btn-sm btn-primary">Speichern</button>
+                                        </div>
+                                        <div class="col-12 form-text">Mehr Plätze werden hinten angehängt. Weniger Plätze nur, wenn die hinteren Plätze nie gebucht wurden.</div>
                                     </form>
                                 </td>
                             </tr>
@@ -934,7 +1038,6 @@ include __DIR__ . '/../includes/navbar.php';
                     <select name="zahlungsart" class="form-select">
                         <option value="bar">Bar</option>
                         <option value="ueberweisung">Überweisung</option>
-                        <option value="paypal">PayPal</option>
                     </select>
                 </div>
 
@@ -949,7 +1052,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="col-md-3 d-flex align-items-end">
                     <div class="w-100">
                         <p class="mb-1 fw-semibold small">Preis</p>
-                        <p class="mb-0 text-success fw-bold fs-5"><?= formatBetrag(TICKET_PREIS) ?></p>
+                        <p class="mb-0 text-muted small">Ticketpreis des gewählten Events</p>
                     </div>
                 </div>
 
@@ -1127,7 +1230,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
 // Event-Typ Toggle im Erstellungsformular
 document.addEventListener("DOMContentLoaded", function() {
-    var radios = document.querySelectorAll("[name=\"event_typ\"][form!=\"\"]");
     // Nur die Radios im Modal ansprechen
     var modalRadios = document.querySelectorAll("#createEventModal [name=\"event_typ\"]");
     var maxWrap = document.getElementById("ce_max_gaeste_wrap");

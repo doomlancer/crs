@@ -466,14 +466,33 @@ function currentIdentity(): ?array {
  * Weiterleitung wenn nicht eingeloggt
  */
 function requireLogin(): void {
-    if (!isLoggedIn()) {
+    if (isLoggedIn()) {
+        return;
+    }
+    // War die abgelaufene Sitzung ein Einlass-Zugang (Merker aus config.php),
+    // geht es zurück zum Kurzcode-Login statt zum normalen Login.
+    $loginUrl = !empty($_SESSION['einlass_abgelaufen']) ? '/pages/einlass_login.php' : '/pages/login.php';
+
+    // Scanner und Live-Ansichten rufen per fetch() auf. Eine Weiterleitung
+    // lieferte ihnen die HTML-Loginseite, und der Scanner meldete nur
+    // "Serverfehler – Antwort nicht lesbar". Sie bekommen stattdessen eine
+    // eindeutige JSON-Antwort, die sie verständlich anzeigen können.
+    if (wantsJson()) {
+        jsonResponse([
+            'success' => false,
+            'message' => 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich neu an.',
+            'data'    => ['code' => 'session_expired', 'login' => $loginUrl],
+        ], 401);
+    }
+
+    if ($loginUrl === '/pages/login.php') {
         // REQUEST_URI stammt aus der Anfrage und wird nach dem Login als
         // Weiterleitungsziel verwendet – also hier schon einschränken.
         $_SESSION['redirect_after_login'] = safeRedirectTarget(
             $_SERVER['REQUEST_URI'] ?? null, '/pages/events.php'
         );
-        redirect('/pages/login.php');
     }
+    redirect($loginUrl);
 }
 
 /**
@@ -482,10 +501,35 @@ function requireLogin(): void {
 function requireRole(string ...$roles): void {
     requireLogin();
     if (!hasRole(...$roles)) {
+        if (wantsJson()) {
+            jsonResponse(['success' => false, 'message' => 'Keine Berechtigung.', 'data' => ['code' => 'forbidden']], 403);
+        }
         http_response_code(403);
         include __DIR__ . '/pages/error_403.php';
         exit;
     }
+}
+
+/**
+ * Erwartet der Aufrufer eine JSON-Antwort (fetch/AJAX)?
+ */
+function wantsJson(): bool {
+    return isAjax()
+        || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')
+        || (($_POST['format'] ?? $_GET['format'] ?? '') === 'json');
+}
+
+/**
+ * Startseite je Rolle nach dem Login: Personal landet in seinem Bereich,
+ * nicht auf der Event-Liste für Gäste.
+ */
+function startseiteFuerRolle(?string $rolle): string {
+    return match ($rolle) {
+        'admin'     => '/pages/admin_dashboard.php',
+        'kassierer' => '/pages/kassierer_dashboard.php',
+        'einlass'   => '/pages/einlass_scan.php',
+        default     => '/pages/events.php',
+    };
 }
 
 /**
@@ -724,14 +768,47 @@ function sendPasswordResetEmail(string $email, string $vorname, string $resetUrl
 }
 
 /**
- * Reservierungsbestätigung senden
+ * Reservierungsbestätigung mit den Tickets (QR-Code je Person) senden.
+ * Lädt alle Angaben selbst aus der Datenbank, damit jede Buchungsart
+ * (Sitzplatz, Freiticket) dieselbe, vollständige Mail bekommt.
  */
-function sendReservierungsbestaetigung(string $email, string $vorname, array $buchungen, string $eventName, string $eventDatum): bool {
-    if (file_exists(__DIR__ . '/includes/mailer.php')) {
-        require_once __DIR__ . '/includes/mailer.php';
-        return mailReservierungsbestaetigung($email, $vorname, $buchungen, $eventName, $eventDatum);
+function sendReservierungsbestaetigung(int $userId, int $eventId, array $buchungsnummern): bool {
+    if (empty($buchungsnummern) || !file_exists(__DIR__ . '/includes/mailer.php')) {
+        return false;
     }
-    return false;
+    require_once __DIR__ . '/includes/mailer.php';
+    require_once __DIR__ . '/includes/qrcode.php';
+
+    try {
+        $pdo = getDB();
+        $stmtU = $pdo->prepare('SELECT email, vorname, nachname FROM users WHERE id = ?');
+        $stmtU->execute([$userId]);
+        $user = $stmtU->fetch();
+        $stmtE = $pdo->prepare('SELECT name, datum FROM events WHERE id = ?');
+        $stmtE->execute([$eventId]);
+        $event = $stmtE->fetch();
+        if (!$user || !$event) return false;
+
+        $platzhalter = implode(',', array_fill(0, count($buchungsnummern), '?'));
+        $stmtT = $pdo->prepare(
+            "SELECT r.buchungsnummer, r.preis, t.tischnummer, s.sitzplatznummer,
+                    p.zahlungsart, p.status AS zahl_status, p.betrag
+             FROM reservations r
+             LEFT JOIN seats s    ON s.id = r.seat_id
+             LEFT JOIN tables t   ON t.id = s.table_id
+             LEFT JOIN payments p ON p.reservation_id = r.id
+             WHERE r.buchungsnummer IN ({$platzhalter})
+             ORDER BY t.tischnummer, s.sitzplatznummer, r.id"
+        );
+        $stmtT->execute(array_values($buchungsnummern));
+        $tickets = $stmtT->fetchAll();
+    } catch (Throwable $e) {
+        error_log('Bestätigungsmail: Daten konnten nicht geladen werden: ' . $e->getMessage());
+        return false;
+    }
+    if (!$tickets) return false;
+
+    return mailReservierungsbestaetigung($user, $event, $tickets, ticketLinkUrl($userId, $eventId));
 }
 
 /**
@@ -1151,6 +1228,11 @@ function checkinReservation(int $reservationId, ?int $expectedEventId = null): a
                 'tischnummer'    => $res['tischnummer'],
                 'sitzplatznummer'=> $res['sitzplatznummer'],
                 'freies_ticket'  => empty($res['seat_id']),
+                // Die Scan-Seiten zeigen dieses Feld direkt an – es fehlte, und
+                // nach jedem Scan stand nur der Name ohne Tisch und Platz da.
+                'platz'          => !empty($res['seat_id'])
+                    ? 'Tisch ' . $res['tischnummer'] . ' · Platz ' . $res['sitzplatznummer']
+                    : 'Freies Ticket',
                 'zahl_status'    => $res['zahl_status'] ?? 'offen',
                 'betrag'         => $res['betrag'] ?? 0,
                 'zahlungsart'    => $res['zahlungsart'] ?? 'bar',
@@ -1387,3 +1469,115 @@ function findReservationsForLookup(string $query, ?int $eventId = null, int $lim
         ];
     }, $stmt->fetchAll());
 }
+
+// =====================
+// Ticket-Links & Zahlungshinweise
+// =====================
+
+/** Signatur für Ticket-Links (getrennt von der QR-Signatur durch eigenen Präfix). */
+function ticketLinkToken(string $bereich): string {
+    return substr(hash_hmac('sha256', 'ticketlink|' . $bereich, TICKET_SECRET), 0, 24);
+}
+
+/** Persönlicher Link auf alle Tickets eines Gastes für ein Event – ohne Login. */
+function ticketLinkUrl(int $userId, int $eventId): string {
+    return rtrim(APP_URL, '/') . '/pages/ticket.php?u=' . $userId . '&e=' . $eventId
+         . '&t=' . ticketLinkToken("u{$userId}e{$eventId}");
+}
+
+/** Link auf ein einzelnes Ticket – zum Weitergeben an Mitfeiernde (ein QR je Person). */
+function ticketEinzelLinkUrl(string $buchungsnummer): string {
+    return rtrim(APP_URL, '/') . '/pages/ticket.php?b=' . rawurlencode($buchungsnummer)
+         . '&t=' . ticketLinkToken('b' . $buchungsnummer);
+}
+
+/** Bankverbindung aus den Einstellungen (Felder leer, wenn nicht gepflegt). */
+function bankverbindung(): array {
+    return [
+        'inhaber' => getSetting('bank_inhaber'),
+        'iban'    => getSetting('bank_iban'),
+        'bic'     => getSetting('bank_bic'),
+        'bank'    => getSetting('bank_name'),
+    ];
+}
+
+/**
+ * Verwendungszweck für Überweisungen: erste Buchungsnummer, Anzahl weiterer
+ * Tickets und Nachname – eindeutig zuordenbar und unter 140 Zeichen.
+ */
+function verwendungszweck(array $buchungsnummern, string $nachname): string {
+    $buchungsnummern = array_values($buchungsnummern);
+    $zweck = $buchungsnummern[0] ?? '';
+    if (count($buchungsnummern) > 1) {
+        $zweck .= ' +' . (count($buchungsnummern) - 1);
+    }
+    return mb_substr(trim($zweck . ' ' . $nachname), 0, 140);
+}
+
+// =====================
+// Warteliste
+// =====================
+
+/**
+ * Benachrichtigt die nächste(n) Person(en) auf der Warteliste, nachdem
+ * Plätze frei geworden sind. Reihenfolge: zuerst, wer noch keine Nachricht
+ * bekommen hat (nach Eintragungszeit), dann – falls alle schon benachrichtigt
+ * wurden – wer am längsten zurückliegt. Bucht jemand, verschwindet sein
+ * Eintrag (siehe api/reserve_seat.php).
+ */
+function benachrichtigeWarteliste(int $eventId, int $anzahl = 1): void {
+    if ($anzahl < 1) return;
+    try {
+        $pdo  = getDB();
+        $stmt = $pdo->prepare(
+            'SELECT w.id, u.email, u.vorname, e.name AS event_name
+             FROM waitlist w
+             JOIN users u  ON u.id = w.user_id
+             JOIN events e ON e.id = w.event_id
+             WHERE w.event_id = ? AND e.status = "aktiv" AND u.aktiv = 1
+             ORDER BY (w.benachrichtigt_am IS NOT NULL), w.benachrichtigt_am ASC, w.erstellt_am ASC
+             LIMIT ' . (int)$anzahl
+        );
+        $stmt->execute([$eventId]);
+        $mark = $pdo->prepare('UPDATE waitlist SET benachrichtigt_am = NOW() WHERE id = ?');
+        foreach ($stmt->fetchAll() as $w) {
+            sendWaitlistNotification(
+                $w['email'], $w['vorname'], $w['event_name'],
+                rtrim(APP_URL, '/') . '/pages/tischplan.php?event_id=' . $eventId
+            );
+            $mark->execute([$w['id']]);
+        }
+    } catch (Throwable $e) {
+        error_log('Wartelisten-Benachrichtigung fehlgeschlagen: ' . $e->getMessage());
+    }
+}
+
+// =====================
+// Einlass-Sitzungen abschotten
+// =====================
+
+/*
+ * Ein Einlass-Zugang hat kein Benutzerkonto. Seiten wie Profil, Tischplan
+ * oder "Meine Reservierungen" setzen aber eines voraus: Der Footer zeigte
+ * "Angemeldet als" ohne Namen, das Profil meldete den Helfer komplett ab.
+ * Einlass-Sitzungen dürfen deshalb nur die Scan-Seite und die Schnittstellen
+ * aufrufen, die diese braucht; alles andere führt zurück zum Scanner.
+ */
+(function (): void {
+    if (PHP_SAPI === 'cli' || empty($_SESSION['einlass_id'])) {
+        return;
+    }
+    $erlaubt = [
+        '/pages/einlass_scan.php', '/pages/einlass_login.php',
+        '/api/checkin_gast.php', '/api/checkin_undo.php', '/api/update_payment.php',
+        '/api/theme.css.php', '/includes/auth.php',
+        '/pages/error_403.php', '/pages/error_404.php',
+    ];
+    if (in_array($_SERVER['SCRIPT_NAME'] ?? '', $erlaubt, true)) {
+        return;
+    }
+    if (wantsJson()) {
+        jsonResponse(['success' => false, 'message' => 'Für den Einlass-Zugang nicht verfügbar.', 'data' => null], 403);
+    }
+    redirect('/pages/einlass_scan.php');
+})();

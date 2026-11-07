@@ -8,27 +8,26 @@ require_once __DIR__ . '/../functions.php';
 
 $pdo = getDB();
 
-// Alle Events laden, geordnet nach Datum aufsteigend
-// Auslastung direkt via JOIN berechnen für Performance
-$stmt = $pdo->prepare(
-    "SELECT
-        e.id,
-        e.datum,
-        e.name,
-        e.beschreibung,
-        e.max_gaeste,
-        e.status,
-        e.erstellt_am,
-        COUNT(s.id)                                                         AS gesamt_sitze,
-        SUM(CASE WHEN s.status != 'verfuegbar' THEN 1 ELSE 0 END)          AS belegte_sitze
-     FROM events e
-     LEFT JOIN tables t  ON t.event_id  = e.id
-     LEFT JOIN seats  s  ON s.table_id  = t.id
-     GROUP BY e.id
-     ORDER BY e.datum ASC"
-);
-$stmt->execute();
-$events = $stmt->fetchAll();
+// Alle Events laden, geordnet nach Datum aufsteigend. Die Auslastung kommt
+// aus getEventAuslastung() – dieselbe Rechnung wie in den Dashboards, die
+// auch Freiticket-Events (Kontingent statt Sitzplätze) richtig zählt.
+$events = $pdo->query(
+    "SELECT id, datum, name, beschreibung, max_gaeste, status, preis, event_typ
+     FROM events
+     ORDER BY datum ASC"
+)->fetchAll();
+foreach ($events as &$ev) {
+    $ev['auslastung'] = getEventAuslastung((int)$ev['id']);
+}
+unset($ev);
+
+// Wartelisten-Einträge des angemeldeten Gastes (für den Knopf bei vollen Events)
+$meineWarteliste = [];
+if (isLoggedIn() && !empty($_SESSION['user_id'])) {
+    $stmtWl = $pdo->prepare('SELECT event_id FROM waitlist WHERE user_id = ?');
+    $stmtWl->execute([(int)$_SESSION['user_id']]);
+    $meineWarteliste = array_map('intval', $stmtWl->fetchAll(PDO::FETCH_COLUMN));
+}
 
 $pageTitle = __('events.heading');
 $bodyClass = 'bg-light';
@@ -79,76 +78,37 @@ include __DIR__ . '/../includes/navbar.php';
 
         <?php else: ?>
 
-        <!-- Statistik-Zeile -->
-        <div class="row g-3 mb-4">
-            <?php
-            $totalEvents  = count($events);
-            $activeEvents = array_filter($events, fn($e) => $e['status'] === 'aktiv');
-            $totalSeats   = array_sum(array_column($events, 'gesamt_sitze'));
-            $takenSeats   = array_sum(array_column($events, 'belegte_sitze'));
-            $freeSeats    = $totalSeats - $takenSeats;
-            ?>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body py-3">
-                        <div class="display-6 fw-bold text-warning"><?= $totalEvents ?></div>
-                        <div class="small text-muted"><?= __('events.stat_total') ?></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body py-3">
-                        <div class="display-6 fw-bold text-success"><?= count($activeEvents) ?></div>
-                        <div class="small text-muted"><?= __('events.stat_active') ?></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body py-3">
-                        <div class="display-6 fw-bold text-primary"><?= $totalSeats ?></div>
-                        <div class="small text-muted"><?= __('events.stat_seats_total') ?></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm text-center h-100">
-                    <div class="card-body py-3">
-                        <div class="display-6 fw-bold text-info"><?= $freeSeats ?></div>
-                        <div class="small text-muted"><?= __('events.stat_seats_free') ?></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Event-Cards -->
         <div class="row g-4">
             <?php foreach ($events as $event):
-                $gesamt  = (int)($event['gesamt_sitze']  ?? 0);
-                $belegt  = (int)($event['belegte_sitze'] ?? 0);
-                $frei    = $gesamt - $belegt;
-                $prozent = $gesamt > 0 ? round(($belegt / $gesamt) * 100) : 0;
-
-                // Farbe der Fortschrittsanzeige je nach Auslastung
-                if ($prozent >= 90) {
-                    $barColor   = 'bg-danger';
-                    $badgeColor = 'danger';
-                    $auslastungText = __('events.occ_almost_full');
-                } elseif ($prozent >= 70) {
-                    $barColor   = 'bg-warning';
-                    $badgeColor = 'warning';
-                    $auslastungText = __('events.occ_busy');
-                } else {
-                    $barColor   = 'bg-success';
-                    $badgeColor = 'success';
-                    $auslastungText = __('events.occ_available');
-                }
+                $a          = $event['auslastung'];
+                $freiticket = ($event['event_typ'] ?? 'tischplan') === 'freie_tickets';
+                $gesamt     = (int)$a['gesamt'];
+                $belegt     = (int)$a['belegt'];
+                $frei       = (int)$a['frei'];
+                $prozent    = (int)$a['prozent'];
+                $preis      = (float)($event['preis'] ?? 0) > 0 ? (float)$event['preis'] : (float)TICKET_PREIS;
 
                 // Ist das Event in der Vergangenheit?
-                $isPast    = strtotime($event['datum']) < mktime(0, 0, 0);
-                $isVoll    = $frei <= 0 && $gesamt > 0;
-                $canBook   = !$isPast && !$isVoll && $event['status'] === 'aktiv';
+                $isPast  = strtotime($event['datum']) < mktime(0, 0, 0);
+                // Voll: Tischplan ohne freien Sitz, Freitickets mit erschöpftem Kontingent
+                $isVoll  = $gesamt > 0 && $frei <= 0;
+                $canBook = !$isPast && !$isVoll && $event['status'] === 'aktiv';
+
+                // Farbe der Fortschrittsanzeige je nach Auslastung
+                if ($isVoll) {
+                    $barColor = 'bg-danger'; $badgeColor = 'danger';
+                    $auslastungText = __('events.sold_out');
+                } elseif ($prozent >= 90) {
+                    $barColor = 'bg-danger'; $badgeColor = 'danger';
+                    $auslastungText = __('events.occ_almost_full');
+                } elseif ($prozent >= 70) {
+                    $barColor = 'bg-warning'; $badgeColor = 'warning';
+                    $auslastungText = __('events.occ_busy');
+                } else {
+                    $barColor = 'bg-success'; $badgeColor = 'success';
+                    $auslastungText = __('events.occ_available');
+                }
             ?>
             <div class="col-12 col-md-6 col-xl-4">
                 <div class="card border-0 shadow-sm h-100 <?= $isPast ? 'opacity-75' : '' ?>">
@@ -209,6 +169,13 @@ include __DIR__ . '/../includes/navbar.php';
                             </div>
 
                             <!-- Platz-Info -->
+                            <?php if ($freiticket): ?>
+                            <small class="text-muted">
+                                <i class="bi bi-ticket-perforated me-1"></i><?= htmlspecialchars($gesamt > 0
+                                    ? sprintf(__('events.tickets_sold'), $belegt, $gesamt)
+                                    : sprintf(__('events.tickets_sold_nolimit'), $belegt)) ?>
+                            </small>
+                            <?php else: ?>
                             <div class="d-flex justify-content-between">
                                 <small class="text-muted">
                                     <i class="bi bi-check-circle text-success me-1"></i><?= htmlspecialchars(sprintf(__('events.free'), $frei)) ?>
@@ -220,12 +187,13 @@ include __DIR__ . '/../includes/navbar.php';
                                     <i class="bi bi-grid me-1"></i><?= htmlspecialchars(sprintf(__('events.total_seats'), $gesamt)) ?>
                                 </small>
                             </div>
+                            <?php endif; ?>
                         </div>
 
                         <!-- Ticket-Preis -->
                         <div class="mt-3 p-2 bg-light rounded d-flex justify-content-between align-items-center">
                             <small class="text-muted"><i class="bi bi-ticket me-1"></i><?= __('events.ticket_price') ?></small>
-                            <span class="fw-bold text-dark"><?= formatBetrag(TICKET_PREIS) ?></span>
+                            <span class="fw-bold text-dark"><?= formatBetrag($preis) ?></span>
                         </div>
 
                     </div>
@@ -237,10 +205,25 @@ include __DIR__ . '/../includes/navbar.php';
                                 <i class="bi bi-clock-history me-1"></i><?= __('events.ended') ?>
                             </button>
 
+                        <?php elseif ($isVoll && $event['status'] === 'aktiv' && isLoggedIn()): ?>
+                            <?php if (in_array((int)$event['id'], $meineWarteliste, true)): ?>
+                            <a href="/pages/meine_reservierungen.php" class="btn btn-outline-secondary w-100">
+                                <i class="bi bi-hourglass-split me-1"></i><?= __('events.waitlist_on') ?>
+                            </a>
+                            <?php else: ?>
+                            <form method="POST" action="/api/join_waitlist.php" class="m-0">
+                                <?= csrfField() ?>
+                                <input type="hidden" name="event_id" value="<?= (int)$event['id'] ?>">
+                                <button type="submit" class="btn btn-outline-danger w-100 fw-semibold">
+                                    <i class="bi bi-hourglass-split me-1"></i><?= __('events.sold_out') ?> – <?= __('events.waitlist_join') ?>
+                                </button>
+                            </form>
+                            <?php endif; ?>
+
                         <?php elseif ($isVoll): ?>
-                            <button class="btn btn-outline-danger w-100" disabled>
-                                <i class="bi bi-x-circle me-1"></i><?= __('events.sold_out') ?>
-                            </button>
+                            <a href="/pages/login.php" class="btn btn-outline-danger w-100">
+                                <i class="bi bi-x-circle me-1"></i><?= __('events.sold_out') ?> – <?= __('events.waitlist_join') ?>
+                            </a>
 
                         <?php elseif ($event['status'] !== 'aktiv'): ?>
                             <button class="btn btn-outline-secondary w-100" disabled>
@@ -250,7 +233,7 @@ include __DIR__ . '/../includes/navbar.php';
                         <?php elseif (isLoggedIn()): ?>
                             <a href="/pages/tischplan.php?event_id=<?= (int)$event['id'] ?>"
                                class="btn btn-warning w-100 fw-semibold">
-                                <i class="bi bi-grid-3x3 me-1"></i><?= __('events.reserve') ?>
+                                <i class="bi <?= $freiticket ? 'bi-ticket-perforated' : 'bi-grid-3x3' ?> me-1"></i><?= $freiticket ? __('events.buy_tickets') : __('events.book_now') ?>
                             </a>
 
                         <?php else: ?>

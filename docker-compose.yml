@@ -28,6 +28,8 @@ services:
       APP_URL: ${APP_URL:-http://localhost:8080}
       TICKET_PREIS: ${TICKET_PREIS:-15.00}
       DEBUG_MODE: ${DEBUG_MODE:-false}
+      # Zeitzone für PHP und Zeitangaben (Check-in-Zeiten, Audit-Log)
+      TZ: ${TZ:-Europe/Berlin}
       # FORCE_HTTPS=false für lokalen HTTP-Zugriff; true hinter Reverse-Proxy/TLS
       FORCE_HTTPS: ${FORCE_HTTPS:-false}
       # Nur bei Reverse-Proxy relevant: dessen IP/CIDR, siehe .env.example
@@ -37,9 +39,6 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_VORNAME: ${ADMIN_VORNAME:-Admin}
       ADMIN_NACHNAME: ${ADMIN_NACHNAME:-Kameruner}
-      # ── PayPal (optional) ──
-      PAYPAL_EMAIL: ${PAYPAL_EMAIL:-}
-      PAYPAL_SANDBOX: ${PAYPAL_SANDBOX:-false}
       # ── SMTP / E-Mail (optional – leer lassen = kein Mailversand) ──
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -68,6 +67,7 @@ services:
       MARIADB_USER: ${DB_USER:-crs}
       MARIADB_PASSWORD: ${DB_PASS:-changeme}
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS:-changeme-root}
+      TZ: ${TZ:-Europe/Berlin}
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:

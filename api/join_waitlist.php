@@ -55,26 +55,15 @@ if ($stmtCheck->fetch()) {
     redirect('/pages/events.php');
 }
 
-// Prüfen ob bereits eine aktive Reservierung für dieses Event besteht
-$stmtRes = $pdo->prepare(
-    "SELECT id FROM reservations WHERE user_id = ? AND event_id = ? AND status NOT IN ('abgerechnet','storniert')"
-);
-$stmtRes->execute([$userId, $eventId]);
-if ($stmtRes->fetch()) {
-    setFlash('info', 'Sie haben bereits eine aktive Reservierung für dieses Event.');
-    redirect('/pages/events.php');
-}
+// Auch wer schon Tickets hat, darf auf weitere Plätze warten (z. B. für
+// Nachzügler der eigenen Gruppe); bucht er, verschwindet der Eintrag.
 
-// Prüfen ob noch freie Plätze vorhanden (dann kein Wartelisten-Eintrag nötig)
-$stmtFrei = $pdo->prepare(
-    "SELECT COUNT(*) FROM seats s
-     JOIN tables t ON s.table_id = t.id
-     WHERE t.event_id = ? AND s.status = 'verfuegbar'"
-);
-$stmtFrei->execute([$eventId]);
-$freiePlaetze = (int)$stmtFrei->fetchColumn();
+// Prüfen ob noch freie Plätze vorhanden (dann kein Wartelisten-Eintrag nötig).
+// getEventAuslastung() deckt Tischplan und Freiticket-Kontingent ab.
+$auslastung = getEventAuslastung($eventId);
+$ausgebucht = $auslastung['gesamt'] > 0 && $auslastung['frei'] <= 0;
 
-if ($freiePlaetze > 0) {
+if (!$ausgebucht) {
     setFlash('info', 'Es sind noch freie Plätze verfügbar. Bitte reservieren Sie direkt.');
     redirect('/pages/tischplan.php?event_id=' . $eventId);
 }

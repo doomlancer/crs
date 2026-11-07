@@ -14,6 +14,7 @@ $pdo = getDB();
 
 // ─── Saalfoto hochladen (Editor-Modus) ────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['post_action'] ?? '') === 'upload_floorplan') {
+    requireRole('admin');
     $uploadEventId = (int)($_POST['event_id'] ?? 0);
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         setFlash('error', 'Sicherheitsfehler. Bitte erneut versuchen.');
@@ -59,7 +60,9 @@ if ($selectedEventId) {
     }
 }
 
-$sitzplanMode = ($_GET['mode'] ?? '') === 'editor' ? 'editor' : 'auto';
+// Der Tisch-Editor ist Vorbereitung (Admin), kein Werkzeug für den Abend.
+$darfEinrichten = hasRole('admin');
+$sitzplanMode = ($darfEinrichten && ($_GET['mode'] ?? '') === 'editor') ? 'editor' : 'auto';
 
 // Fallback-Position für Tische ohne gespeicherte Koordinaten (Migration 003,
 // bisher ungenutzt): einfaches Raster, damit im Editor beim ersten Aufruf
@@ -240,7 +243,8 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
         <?php else: ?>
 
-        <!-- Umschalter: kompakte Übersicht vs. freies Einrichten -->
+        <!-- Umschalter: kompakte Übersicht vs. freies Einrichten (nur Admin) -->
+        <?php if ($darfEinrichten): ?>
         <div class="d-flex align-items-center gap-2 mb-3">
             <div class="btn-group btn-group-sm" role="group" aria-label="Sitzplan-Ansicht">
                 <button type="button" class="btn btn-outline-dark <?= $sitzplanMode === 'auto' ? 'active' : '' ?>" data-mode-btn="auto">
@@ -251,6 +255,7 @@ include __DIR__ . '/../includes/navbar.php';
                 </button>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- ═══ Automatisch: kompakte Kacheln mit Klick-zum-Aufklappen ═══════════ -->
         <div id="mode-auto" style="<?= $sitzplanMode === 'editor' ? 'display:none;' : '' ?>">
@@ -278,7 +283,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <?= $counts['gruen'] ?> eingecheckt &middot; <?= $counts['gelb'] ?> verkauft &middot; <?= $counts['rot'] ?> frei
                                 </span>
                             </button>
-                            <div id="table-seats-<?= $tisch['table_id'] ?>" class="d-flex flex-wrap mt-2" style="gap:4px;display:none;">
+                            <div id="table-seats-<?= $tisch['table_id'] ?>" class="flex-wrap mt-2 d-none" style="gap:4px;">
                                 <?php foreach ($tisch['seats'] as $seat):
                                     $clickable = $seat['reservation_id'] !== null;
                                     $title = $clickable
@@ -302,6 +307,7 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
 
         <!-- ═══ Frei einrichten: Tische per Ziehen positionieren ═════════════════ -->
+        <?php if ($darfEinrichten): ?>
         <div id="mode-editor" style="<?= $sitzplanMode === 'editor' ? '' : 'display:none;' ?>">
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body d-flex flex-wrap align-items-center gap-3">
@@ -344,6 +350,7 @@ include __DIR__ . '/../includes/navbar.php';
             </p>
             <?php endif; ?>
         </div>
+        <?php endif; // darfEinrichten ?>
 
         <?php endif; ?>
 
@@ -461,7 +468,13 @@ $extraScripts = <<<'JS'
             var seats = document.getElementById('table-seats-' + id);
             var open = btn.getAttribute('aria-expanded') === 'true';
             btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-            if (seats) seats.style.display = open ? 'none' : 'flex';
+            // Über Klassen statt style.display: Bootstraps d-flex/d-none sind
+            // !important und überstimmten den Inline-Stil – die Kacheln
+            // ließen sich deshalb nie einklappen.
+            if (seats) {
+                seats.classList.toggle('d-none', open);
+                seats.classList.toggle('d-flex', !open);
+            }
         });
     });
 

@@ -7,7 +7,7 @@
 FROM php:8.2-apache
 
 # --- System-Pakete + PHP-Extensions ---------------------------------------
-# pdo_mysql: Datenbank | mbstring: mb_* Funktionen | curl: PayPal-IPN
+# pdo_mysql: Datenbank | mbstring: mb_* Funktionen | curl: HTTP-Aufrufe
 # msmtp:     SMTP-Relay, damit PHP mail() E-Mails über einen echten Server sendet
 # default-mysql-client: für den DB-Warte-Check im Entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,6 +37,7 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
         echo 'upload_max_filesize = 8M'; \
         echo 'post_max_size = 12M'; \
         echo 'expose_php = Off'; \
+        echo 'date.timezone = Europe/Berlin'; \
         echo 'sendmail_path = "/usr/bin/msmtp -t --read-envelope-from"'; \
     } > "$PHP_INI_DIR/conf.d/zz-app.ini"
 

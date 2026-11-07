@@ -18,8 +18,9 @@ $gesamtumsatz = (float)$pdo->query(
     "SELECT COALESCE(SUM(betrag), 0) FROM payments WHERE status='bezahlt'"
 )->fetchColumn();
 
+// Stornierte Buchungen zählen nicht als Reservierung
 $gesamtReservierungen = (int)$pdo->query(
-    "SELECT COUNT(*) FROM reservations"
+    "SELECT COUNT(*) FROM reservations WHERE status <> 'storniert'"
 )->fetchColumn();
 
 $anzahlEvents = (int)$pdo->query(
@@ -40,7 +41,7 @@ $topEvents = $pdo->query(
             COUNT(r.id) AS reservierungen,
             COALESCE(SUM(p.betrag), 0) AS umsatz
      FROM events e
-     LEFT JOIN reservations r ON r.event_id = e.id
+     LEFT JOIN reservations r ON r.event_id = e.id AND r.status <> 'storniert'
      LEFT JOIN payments p ON p.reservation_id = r.id AND p.status='bezahlt'
      GROUP BY e.id
      ORDER BY umsatz DESC
@@ -75,6 +76,7 @@ for ($i = 11; $i >= 0; $i--) {
 $payMethodData = $pdo->query(
     "SELECT p.zahlungsart, COUNT(*) AS anzahl
      FROM payments p
+     WHERE p.status <> 'storniert'
      GROUP BY p.zahlungsart
      ORDER BY anzahl DESC"
 )->fetchAll();
@@ -91,28 +93,21 @@ $payBgColors = array_map(fn($pm) => $payColors[$pm['zahlungsart']] ?? '#6c757d',
 // ═══════════════════════════════════════════════════════════════════════════════
 // Chart 3: Auslastung Events (Bar)
 // ═══════════════════════════════════════════════════════════════════════════════
+// getEventAuslastung() rechnet Tischplan-Events über Sitzplätze und
+// Freiticket-Events über ihr Kontingent – vorher standen Freitickets hier
+// immer mit 0 %.
 $eventAuslastung = $pdo->query(
-    "SELECT e.id, e.name, e.datum,
-            COUNT(DISTINCT s.id) AS sitze_gesamt,
-            SUM(CASE WHEN s.status != 'verfuegbar' THEN 1 ELSE 0 END) AS sitze_belegt
-     FROM events e
-     LEFT JOIN tables t ON t.event_id = e.id
-     LEFT JOIN seats s ON s.table_id = t.id
-     GROUP BY e.id
-     ORDER BY e.datum DESC
-     LIMIT 10"
+    "SELECT id, name, datum FROM events ORDER BY datum DESC LIMIT 10"
 )->fetchAll();
 
 $auslastungLabels = [];
 $auslastungPct    = [];
 $auslastungGesamt = [];
 foreach ($eventAuslastung as $ev) {
+    $a = getEventAuslastung((int)$ev['id']);
     $auslastungLabels[] = mb_substr($ev['name'], 0, 25) . (mb_strlen($ev['name']) > 25 ? '…' : '');
-    $pct = $ev['sitze_gesamt'] > 0
-        ? round(($ev['sitze_belegt'] / $ev['sitze_gesamt']) * 100, 1)
-        : 0;
-    $auslastungPct[]    = $pct;
-    $auslastungGesamt[] = (int)$ev['sitze_gesamt'];
+    $auslastungPct[]    = $a['gesamt'] > 0 ? round($a['belegt'] / $a['gesamt'] * 100, 1) : 0;
+    $auslastungGesamt[] = (int)$a['gesamt'];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -127,7 +122,7 @@ foreach ($eventAuslastung as $ev) {
 $eventBreakdown = $pdo->query(
     "SELECT e.id, e.name, e.datum, e.status,
             (SELECT COUNT(*) FROM reservations r
-              WHERE r.event_id = e.id) AS reservierungen,
+              WHERE r.event_id = e.id AND r.status <> 'storniert') AS reservierungen,
             (SELECT COUNT(*) FROM seats s
                JOIN `tables` t ON s.table_id = t.id
               WHERE t.event_id = e.id) AS sitze_gesamt,
@@ -143,32 +138,25 @@ $eventBreakdown = $pdo->query(
      FROM events e
      ORDER BY e.datum DESC"
 )->fetchAll();
+// Freiticket-Events: Kontingent und verkaufte Tickets statt Sitzplätze
+foreach ($eventBreakdown as &$ev) {
+    $a = getEventAuslastung((int)$ev['id']);
+    $ev['sitze_gesamt'] = $a['gesamt'];
+    $ev['sitze_belegt'] = $a['belegt'];
+}
+unset($ev);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Zahlungsart-Umsatz-Aufschlüsselung
 // ═══════════════════════════════════════════════════════════════════════════════
 $zahlungsartBreakdown = $pdo->query(
-    "SELECT u.zahlungsart,
+    "SELECT p.zahlungsart,
             COUNT(r.id) AS reservierungen,
             COALESCE(SUM(p.betrag), 0) AS umsatz
-     FROM users u
-     JOIN reservations r ON r.user_id = u.id
-     JOIN payments p ON p.reservation_id = r.id AND p.status='bezahlt'
-     GROUP BY u.zahlungsart
-     ORDER BY umsatz DESC"
-)->fetchAll();
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Rollenbasierter Umsatz
-// ═══════════════════════════════════════════════════════════════════════════════
-$rollenBreakdown = $pdo->query(
-    "SELECT u.rolle,
-            COUNT(r.id) AS reservierungen,
-            COALESCE(SUM(p.betrag), 0) AS umsatz
-     FROM users u
-     JOIN reservations r ON r.user_id = u.id
-     JOIN payments p ON p.reservation_id = r.id AND p.status='bezahlt'
-     GROUP BY u.rolle
+     FROM payments p
+     JOIN reservations r ON r.id = p.reservation_id
+     WHERE p.status = 'bezahlt'
+     GROUP BY p.zahlungsart
      ORDER BY umsatz DESC"
 )->fetchAll();
 
@@ -213,7 +201,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card-body">
                     <p class="text-muted small mb-1"><i class="bi bi-ticket-perforated me-1"></i>Reservierungen</p>
                     <h3 class="fw-bold text-primary mb-0"><?= $gesamtReservierungen ?></h3>
-                    <small class="text-muted">Ø <?= $avgProEvent ?> pro Event</small>
+                    <small class="text-muted">Ø <?= number_format((float)$avgProEvent, 1, ',', '.') ?> pro Event</small>
                 </div>
             </div>
         </div>
@@ -353,11 +341,10 @@ include __DIR__ . '/../includes/navbar.php';
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-bottom">
                     <h5 class="mb-0 fw-semibold">
-                        <i class="bi bi-credit-card-2-front me-2 text-info"></i>Umsatz nach Zahlungsart & Benutzertyp
+                        <i class="bi bi-credit-card-2-front me-2 text-info"></i>Bezahlter Umsatz nach Zahlungsweg
                     </h5>
                 </div>
                 <div class="card-body">
-                    <h6 class="fw-semibold text-muted mb-3 small text-uppercase">Nach Zahlungsart der Benutzer</h6>
                     <?php if (empty($zahlungsartBreakdown)): ?>
                     <p class="text-muted small">Keine Daten vorhanden.</p>
                     <?php else: ?>
@@ -381,34 +368,6 @@ include __DIR__ . '/../includes/navbar.php';
                     <?php endforeach; ?>
                     <?php endif; ?>
 
-                    <hr>
-
-                    <h6 class="fw-semibold text-muted mb-3 small text-uppercase">Nach Benutzerrolle</h6>
-                    <?php if (empty($rollenBreakdown)): ?>
-                    <p class="text-muted small">Keine Daten vorhanden.</p>
-                    <?php else: ?>
-                    <?php
-                    $maxRUmsatz = max(array_column($rollenBreakdown, 'umsatz') ?: [1]);
-                    $rolleColors = ['admin' => 'bg-danger', 'kassierer' => 'bg-warning', 'user' => 'bg-primary'];
-                    foreach ($rollenBreakdown as $r):
-                        $pct = $maxRUmsatz > 0 ? round(($r['umsatz'] / $maxRUmsatz) * 100) : 0;
-                        $rolleLabel = match($r['rolle']) { 'admin'=>'Admin','kassierer'=>'Kassierer', default=>'Benutzer' };
-                        $barColor = $rolleColors[$r['rolle']] ?? 'bg-secondary';
-                    ?>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between mb-1">
-                            <span class="small fw-semibold"><?= $rolleLabel ?></span>
-                            <span class="small">
-                                <strong class="text-success"><?= formatBetrag($r['umsatz']) ?></strong>
-                                <span class="text-muted ms-1">(<?= $r['reservierungen'] ?> Res.)</span>
-                            </span>
-                        </div>
-                        <div class="progress" style="height:8px;">
-                            <div class="progress-bar <?= $barColor ?>" style="width:<?= $pct ?>%"></div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>

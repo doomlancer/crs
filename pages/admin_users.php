@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nachname    = sanitize($_POST['nachname'] ?? '');
         $email       = trim(strtolower($_POST['email'] ?? ''));
         $passwort    = $_POST['passwort'] ?? '';
-        $zahlungsart = in_array($_POST['zahlungsart'] ?? '', ['bar','ueberweisung','paypal'])
+        $zahlungsart = in_array($_POST['zahlungsart'] ?? '', ['bar','ueberweisung'])
                        ? $_POST['zahlungsart'] : 'bar';
         $adresse     = sanitize($_POST['adresse'] ?? '');
         $rolle       = in_array($_POST['rolle'] ?? '', ['user','kassierer','admin'])
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $vorname     = sanitize($_POST['vorname'] ?? '');
         $nachname    = sanitize($_POST['nachname'] ?? '');
         $email       = trim(strtolower($_POST['email'] ?? ''));
-        $zahlungsart = in_array($_POST['zahlungsart'] ?? '', ['bar','ueberweisung','paypal'])
+        $zahlungsart = in_array($_POST['zahlungsart'] ?? '', ['bar','ueberweisung'])
                        ? $_POST['zahlungsart'] : 'bar';
         $adresse     = sanitize($_POST['adresse'] ?? '');
         $rolle       = in_array($_POST['rolle'] ?? '', ['user','kassierer','admin'])
@@ -316,7 +316,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="col-md-3">
                     <label class="form-label fw-semibold small">Zahlungsart</label>
                     <select name="zahlungsart" class="form-select">
-                        <?php foreach (['bar'=>'Bar','ueberweisung'=>'Überweisung','paypal'=>'PayPal'] as $k=>$v): ?>
+                        <?php foreach (['bar'=>'Bar','ueberweisung'=>'Überweisung'] as $k=>$v): ?>
                         <option value="<?= $k ?>" <?= $editUser['zahlungsart'] === $k ? 'selected':'' ?>><?= $v ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -582,7 +582,6 @@ include __DIR__ . '/../includes/navbar.php';
                             <select name="zahlungsart" class="form-select">
                                 <option value="bar">Bar</option>
                                 <option value="ueberweisung">Überweisung</option>
-                                <option value="paypal">PayPal</option>
                             </select>
                         </div>
                         <div class="col-md-8">

@@ -120,7 +120,28 @@ include __DIR__ . '/../includes/navbar.php';
     </div>
 
     <!-- Buchungsformular -->
-    <?php if (!$ausverkauft): ?>
+    <?php if ($ausverkauft): ?>
+    <?php
+        $stmtW = $pdo->prepare('SELECT 1 FROM waitlist WHERE user_id = ? AND event_id = ?');
+        $stmtW->execute([(int)$_SESSION['user_id'], $evId]);
+    ?>
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body d-flex flex-wrap align-items-center gap-3">
+            <div class="flex-grow-1"><?= __('seating.sold_out_text') ?></div>
+            <?php if ($stmtW->fetchColumn()): ?>
+            <a href="/pages/meine_reservierungen.php" class="btn btn-outline-secondary"><?= __('events.waitlist_on') ?></a>
+            <?php else: ?>
+            <form method="POST" action="/api/join_waitlist.php" class="m-0">
+                <?= csrfField() ?>
+                <input type="hidden" name="event_id" value="<?= $evId ?>">
+                <button type="submit" class="btn btn-warning fw-semibold"><i class="bi bi-hourglass-split me-1"></i><?= __('events.waitlist_join') ?></button>
+            </form>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php elseif (($selectedEvent['status'] ?? 'aktiv') !== 'aktiv' && !hasRole('admin')): ?>
+    <div class="alert alert-info"><i class="bi bi-hourglass-split me-1"></i><?= __('seating.presale_soon_text') ?></div>
+    <?php else: ?>
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header fw-semibold">
             <i class="bi bi-ticket-perforated text-warning me-2"></i><?= __('ticket.reserve_header') ?>
@@ -162,7 +183,7 @@ include __DIR__ . '/../includes/navbar.php';
 
                 <p class="text-muted small mt-3 mb-0">
                     <i class="bi bi-info-circle me-1"></i>
-                    <?= __('ticket.payment_label') ?> <strong><?= zahlungsartLabel($_SESSION['zahlungsart'] ?? 'bar') ?></strong>
+                    <?= __('ticket.payment_label') ?> <strong><?= zahlungsartLabel(currentIdentity()['zahlungsart'] ?? 'bar') ?></strong>
                     <?= __('ticket.payment_hint_suffix') ?>
                 </p>
             </form>

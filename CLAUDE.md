@@ -4,110 +4,89 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CRS (Card Reservating System) is a German-language web application for managing Karneval (Carnival) event seat reservations. It handles event creation, seating plans, guest check-in, payment tracking, and role-based dashboards.
+CRS (Card Reservating System, branded "Kameruner-Tickets") is a German-language PHP web application for Karneval (carnival) event ticketing: event creation, seating plans, free-seating ticket sales, per-person QR tickets, door check-in, payment tracking, waitlist and role-based dashboards. Typical event: 10–12 tables with 18–28 seats each (200–250 guests).
 
-## Setup
+## Deployment
 
-**Keine externen Abhängigkeiten nötig — kein Composer, kein SSH, kein CLI.**
+**Primary: Docker on Unraid** (see `README-Docker.md`).
+- `Dockerfile` (php:8.2-apache, pdo_mysql, msmtp) + `docker-compose.yml` (app, MariaDB 10.11, Watchtower).
+- Every push to `main` builds `ghcr.io/doomlancer/crs:latest` via `.github/workflows/docker-publish.yml`; Watchtower on the server pulls it automatically. **Pushing to `main` deploys to production.**
+- `docker/entrypoint.sh` waits for the DB, runs `php migrate.php`, creates the first admin (`docker/create_admin.php`) and starts Apache.
+- Timezone is `Europe/Berlin` (PHP ini, `TZ` env, and `config.php` sets the MariaDB session `time_zone` to match).
 
-1. `.env.example` → `.env` kopieren und DB-Credentials + SMTP eintragen.
-2. `setup_plesk.sql` in phpMyAdmin importieren (einmalig).
-3. Dateien per FTP hochladen.
-4. Im Browser als Admin aufrufen: `/migrate_web.php` → Migrationen ausführen.
-5. `migrate_web.php` danach per Dateimanager löschen.
-6. `uploads/` und `logs/` müssen serverseitig beschreibbar sein (chmod 755/750).
+**Alternative: classic hosting (Plesk/FTP)**: copy `.env.example` → `.env`, import `setup_plesk.sql`, upload files, run `/migrate_web.php` once as admin, then delete it. `uploads/` and `logs/` must be writable.
 
-### Frontend (optional, for minified assets)
+No Composer, no `vendor/`. Everything is plain PHP: QR codes are generated in `includes/qrcode.php` (pure PHP, SVG and PNG), mail goes through PHP `mail()` (msmtp in Docker).
+
+### Frontend (optional)
 ```
-npm install
-npm run build     # outputs to dist/
-npm run dev       # watch mode
+npm install && npm run build   # outputs to dist/
 ```
-The app works without a build — `header.php` and `footer.php` fall back to unminified `css/style.css` and `js/main.js` if `dist/` doesn't exist.
+The app works without a build — `header.php`/`footer.php` fall back to `css/style.css` and `js/main.js`. Bootstrap, icons, Chart.js and jsQR are served locally from `assets/vendor/`.
 
 ## Architecture
 
 ```
-index.php           ← landing page / router
-config.php          ← loads .env, PDO singleton (getDB()), app constants
-functions.php       ← shared helpers: sanitize, CSRF, auth checks,
-                      i18n __(), email wrappers, validation
+index.php           ← landing page (no router; every page is called directly)
+config.php          ← loads .env/env vars, timezone, session + CSP, PDO singleton getDB(),
+                      constants (TICKET_PREIS, MAX_PLAETZE_PRO_TISCH, SESSION_TIMEOUT,
+                      EINLASS_SESSION_TIMEOUT), ticket signing secret
+functions.php       ← shared helpers: CSRF, auth (currentIdentity/currentEinlassIdentity,
+                      hasRole/requireRole, wantsJson), i18n __(), check-in logic,
+                      live grid, ticket links, waitlist notification, Einlass scope guard
 includes/
-  auth.php          ← loginUser(), logoutUser(), registerUser()
-  header.php        ← HTML <head>; uses dist/ if built, else css/style.css
-  footer.php        ← Bootstrap JS, Chart.js, main.js (or dist/js/main.js)
-  navbar.php        ← role-aware navigation + DE/EN language switcher
-  mailer.php        ← PHPMailer wrappers (password reset, reservation, etc.)
-  qrcode.php        ← QR-code generation (endroid/qr-code)
-pages/              ← one file per view (included by index.php via ?page=)
-api/                ← AJAX/form endpoints; all return {success, message, data}
-lang/
-  de.php            ← German translations
-  en.php            ← English translations
-migrations/         ← versioned SQL files; run via migrate.php
-src/entry.js        ← Vite entry point (imports css/style.css + js/main.js)
-dist/               ← built assets (git-ignored); created by npm run build
+  auth.php          ← loginUser(), loginEinlass(), logout*, registerUser()
+  header.php/footer.php/navbar.php
+  mailer.php        ← mail() wrappers; confirmation mail embeds one QR PNG per ticket (cid:)
+  qrcode.php        ← pure-PHP QR encoder (versions 1–9, level M), SVG + PNG output
+  ticket_karte.php  ← ticket card + payment hint rendering
+pages/              ← one file per view, accessed directly (/pages/xyz.php)
+api/                ← AJAX/form endpoints; JSON shape {success, message, data}
+lang/de.php, en.php ← translations (guest pages only; staff/admin pages are German)
+migrations/         ← versioned SQL files, applied by migrate.php (keep them re-runnable)
 ```
 
-### Request flow
+### Roles
 
-`index.php` reads `?page=` and includes the matching file from `pages/`. API calls hit `api/` directly. There is no front controller beyond this routing.
+`users.rolle`: `user`, `kassierer`, `admin`. Plus the pseudo-role **`einlass`**: short-code login for door helpers without an account (`einlass_zugaenge`, codes bound to one event, managed in admin_events.php → "Tische verwalten"). Einlass sessions are restricted to `pages/einlass_scan.php` and the APIs it needs (guard at the end of `functions.php`).
 
-### Role system
+Use `requireRole('admin')` / `requireRole('kassierer', 'admin')` at the top of restricted pages. For fetch()-based APIs, `requireLogin()`/`requireRole()` answer with JSON 401/403 when the request wants JSON.
 
-Three roles enforced server-side via `$_SESSION['rolle']`:
-- `user` — browse events, reserve seats, join waitlist, view own bookings
-- `kassierer` — check-in guests, update payment status, export guest lists
-- `admin` — full access including event/user/table management and audit log
+### Check-in
 
-Use `requireRole('admin')` / `requireRole('kassierer')` from `functions.php` at the top of any restricted page.
+Single code path: `checkinReservation()` / `checkinByPayload()` in `functions.php`, called via `api/checkin_gast.php` from the scanners, guest list and dashboards. QR payload: `KARN-YYYY-XXXXXX.<16-hex HMAC>`. Undo: `api/checkin_undo.php`. Pay at the door: `api/update_payment.php`.
 
-### API response format
+### Tickets
 
-All `api/` endpoints return a unified JSON structure:
-```json
-{"success": true|false, "message": "...", "data": {...}|null}
-```
+One reservation = one seat = one person = one QR code. Guests get their tickets by mail (inline PNGs) and via a signed link without login (`pages/ticket.php`, see `ticketLinkUrl()`/`ticketEinzelLinkUrl()`), and under "Meine Tickets" (`pages/meine_reservierungen.php`).
 
-### Database key tables
+### Key tables
 
 | Table | Purpose |
 |---|---|
-| `users` | Accounts; `rolle` column holds the role string |
-| `events` | Carnival events |
-| `tables` | Seating tables per event |
-| `seats` | Individual seats; status: `available` / `reserviert` / `besetzt` |
-| `reservations` | Bookings; booking numbers in `KARN-YYYY-XXXXXX` format |
-| `payments` | Payment records per reservation |
-| `waitlist` | Waitlist entries; user auto-notified when a seat frees up |
-| `password_resets` | Token-based password reset (SHA-256 hashed, 1h TTL) |
-| `audit_log` | Admin-visible change history |
-| `migrations` | Tracks which SQL migration files have been applied |
+| `users` | Accounts; `rolle`, `zahlungsart` (`bar`/`ueberweisung`; `paypal` only in old data) |
+| `events` | Events; `event_typ` (`tischplan`/`freie_tickets`), `preis`, `max_gaeste`, `status` (`planung`/`aktiv`/`abgerechnet`) |
+| `tables`, `seats` | Seating per event; seat status `verfuegbar`/`reserviert`/`besetzt`; `pos_x`/`pos_y` for the floor-plan editor |
+| `reservations` | One per seat/ticket; status `geplant`/`eingecheckt`/`abgerechnet`/`storniert` |
+| `payments` | Payment per reservation (`offen`/`bezahlt`/`storniert`) |
+| `waitlist` | Waitlist; `benachrichtigt_am` marks who was already notified |
+| `einlass_zugaenge` | Door helper short codes |
+| `settings` | Design settings and bank details (`bank_*`) |
+| `translation_overrides`, `rate_limits`, `password_resets`, `audit_log`, `migrations` | as named |
 
 ### Migrations
 
-Add new SQL files to `migrations/` numbered sequentially (`004_…sql`). Run `php migrate.php` to apply pending ones. `php migrate.php --status` shows which are done.
+Add files to `migrations/` numbered sequentially (`016_…sql`). Write them re-runnable (`IF NOT EXISTS` etc.). `php migrate.php` applies pending ones, `php migrate.php --status` lists them.
 
-## i18n
+## Security patterns
 
-Translations live in `lang/de.php` and `lang/en.php` as flat key→string arrays. Use `__('key')` everywhere in views. The language switcher in `navbar.php` calls `api/set_lang.php?lang=de|en` and stores the choice in session.
-
-## Security Patterns
-
-- All DB queries use PDO prepared statements via `getDB()`.
-- User output is sanitized with `sanitize()` before display.
-- Forms use CSRF tokens (`generateCsrfToken()` / `validateCsrfToken()`).
-- Passwords are bcrypt (cost 12) via `password_hash` / `password_verify`.
-- Login is rate-limited: 5 failed attempts triggers a 15-minute lockout.
-- Sessions regenerate ID on privilege changes (fixation prevention).
-- `.htaccess` blocks direct access to `.sql`, `.log`, `.env`, `.ini` and PHP execution inside `uploads/`.
-- Content-Security-Policy restricts scripts/styles to `self` + Bootstrap CDN + Google Fonts.
-- Password reset tokens are stored as SHA-256 hashes; raw tokens are only ever sent by email.
-
-## Email
-
-Configure SMTP in `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`). Emails are sent on: registration, reservation confirmation, cancellation, waitlist notification, password reset. All mail functions fall back to PHP `mail()` if `vendor/` is not present.
+- PDO prepared statements everywhere; output escaped with `htmlspecialchars`/`sanitize()`.
+- CSRF tokens on all forms and POST APIs.
+- bcrypt passwords; login rate-limited (5 failures → 15 min lock, plus per-IP limit); Einlass codes rate-limited per IP.
+- Sessions regenerate on login; role and account status re-checked against the DB on every request.
+- CSP with nonces (set in `config.php`); `.htaccess` blocks dot-paths, `.sql/.log/.env/...` and PHP in `uploads/`.
+- Ticket QR codes and ticket links are HMAC-signed with `TICKET_SECRET`.
 
 ## CI
 
-`.github/workflows/claude-code-review.yml` runs an automated Claude review on pull requests.
+`.github/workflows/docker-publish.yml` builds and publishes the Docker image on every push to `main`.

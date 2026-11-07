@@ -20,7 +20,10 @@ $events = $pdo->query(
      ORDER BY datum ASC"
 )->fetchAll();
 
-$eventId = (int)($_GET['event_id'] ?? ($events[0]['id'] ?? 0));
+// Ohne Auswahl das nächste buchbare (aktive) Event öffnen – nicht ein Event
+// "In Planung", bei dem jede Auswahl beim Abschicken abgelehnt würde.
+$ersteAktive = array_values(array_filter($events, fn($e) => $e['status'] === 'aktiv'));
+$eventId = (int)($_GET['event_id'] ?? ($ersteAktive[0]['id'] ?? ($events[0]['id'] ?? 0)));
 
 $selectedEvent = null;
 $tische        = [];
@@ -107,7 +110,24 @@ try {
 } catch (PDOException $e) {
     $ticketPreis = (float)TICKET_PREIS;
 }
-$zahlungsart  = $_SESSION['zahlungsart'] ?? 'bar';
+// Zahlungsart aus dem Konto (die Session kennt sie nicht – vorher stand hier
+// für jeden Gast "Bar", auch bei Überweisung)
+$zahlungsart  = currentIdentity()['zahlungsart'] ?? 'bar';
+$istAdmin     = hasRole('admin');
+$buchbar      = $selectedEvent && ($selectedEvent['status'] === 'aktiv' || $istAdmin);
+$freieGesamt  = array_sum(array_column($tische, 'frei'));
+$ausgebucht   = $selectedEvent && !empty($tische) && $freieGesamt === 0;
+$maxProBuchung = 10;
+$aufWarteliste = false;
+if ($selectedEvent && $ausgebucht) {
+    $stmtW = $pdo->prepare('SELECT 1 FROM waitlist WHERE user_id = ? AND event_id = ?');
+    $stmtW->execute([$userId, $eventId]);
+    $aufWarteliste = (bool)$stmtW->fetchColumn();
+}
+// Volle Tische nur kompakt am Ende auflisten – auf dem Handy waren sie sonst
+// Bildschirmseiten voller grauer Plätze vor den freien.
+$tischeFrei = array_values(array_filter($tische, fn($t) => $t['frei'] > 0 || !empty(array_intersect(array_column($t['sitze'], 'seat_id'), array_keys($meineRes)))));
+$tischeVoll = array_values(array_filter($tische, fn($t) => !in_array($t, $tischeFrei, true)));
 $preisFormatiert = number_format($ticketPreis, 2, ',', '.');
 
 $pageTitle = __('seating.title');
@@ -133,8 +153,8 @@ $extraHead = '
     line-height: 1;
 }
 .seat-label {
-    display: inline-block;
-    margin: 3px;
+    display: inline-flex;
+    margin: 0;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     line-height: 1;
@@ -163,6 +183,15 @@ $extraHead = '
 .table-card { border-left: 3px solid #eab308; }
 /* Sticky Panel */
 .sticky-panel { position: sticky; top: 76px; }
+/* Fixierte Auswahl-Leiste auf dem Handy (unter lg) */
+.mobile-book-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030;
+    background: #1a1a1a; color: #fff;
+    padding: 10px max(16px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 16px rgba(0,0,0,.25);
+}
+@media (max-width: 991.98px) { main.has-book-bar { padding-bottom: 84px; } }
+.seat-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Legende */
 .legend-dot {
     display: inline-block;
@@ -178,7 +207,7 @@ include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';
 ?>
 
-<main class="py-4">
+<main class="py-4<?= !empty($buchbar) ? ' has-book-bar' : '' ?>">
 <div class="container-fluid px-3 px-md-4">
 
     <?= getFlash() ?>
@@ -220,7 +249,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <?php foreach ($events as $ev): ?>
                             <option value="<?= (int)$ev['id'] ?>"
                                     <?= (int)$ev['id'] === $eventId ? 'selected' : '' ?>>
-                                <?= formatDatum($ev['datum']) ?> – <?= htmlspecialchars($ev['name']) ?>
+                                <?= formatDatum($ev['datum']) ?> – <?= htmlspecialchars($ev['name']) ?><?= $ev['status'] !== 'aktiv' ? ' (' . htmlspecialchars(__('events.presale_soon')) . ')' : '' ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
@@ -238,8 +267,30 @@ include __DIR__ . '/../includes/navbar.php';
 
     <?php else: ?>
 
+    <?php if (!$buchbar): ?>
+    <div class="alert alert-info d-flex align-items-start gap-2">
+        <i class="bi bi-hourglass-split fs-5"></i>
+        <div><strong><?= htmlspecialchars($selectedEvent['name']) ?>:</strong> <?= __('seating.presale_soon_text') ?>
+            <div class="mt-2"><a href="/pages/events.php" class="alert-link"><?= __('nav.events') ?></a></div></div>
+    </div>
+    <?php elseif ($ausgebucht): ?>
+    <div class="alert alert-warning d-flex flex-wrap align-items-center gap-3">
+        <div class="flex-grow-1"><i class="bi bi-x-circle me-1"></i><?= __('seating.sold_out_text') ?></div>
+        <?php if ($aufWarteliste): ?>
+        <a href="/pages/meine_reservierungen.php" class="btn btn-outline-secondary btn-sm"><?= __('events.waitlist_on') ?></a>
+        <?php else: ?>
+        <form method="POST" action="/api/join_waitlist.php" class="m-0">
+            <?= csrfField() ?>
+            <input type="hidden" name="event_id" value="<?= $eventId ?>">
+            <button type="submit" class="btn btn-warning btn-sm fw-semibold"><i class="bi bi-hourglass-split me-1"></i><?= __('events.waitlist_join') ?></button>
+        </form>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($buchbar): ?>
     <!-- Haupt-Buchungsformular -->
-    <form method="POST" action="/api/reserve_seat.php" id="bookForm">
+    <form method="POST" action="/api/reserve_seat.php" id="bookForm" data-max="<?= $maxProBuchung ?>">
         <?= csrfField() ?>
         <input type="hidden" name="event_id" value="<?= $eventId ?>">
 
@@ -255,7 +306,7 @@ include __DIR__ . '/../includes/navbar.php';
                             <i class="bi bi-calendar3 text-warning me-1"></i>
                             <?= htmlspecialchars($selectedEvent['name']) ?>
                         </span>
-                        <span class="text-muted small">
+                        <span class="text-white-50 small">
                             <?= formatDatum($selectedEvent['datum']) ?>
                         </span>
                         <span class="ms-auto fw-bold text-warning">
@@ -295,7 +346,7 @@ include __DIR__ . '/../includes/navbar.php';
 
                 <!-- Tisch-Raster -->
                 <div class="row g-3">
-                    <?php foreach ($tische as $tisch):
+                    <?php foreach ($tischeFrei as $tisch):
                         // Eigene Sitze an diesem Tisch sammeln
                         $eigeneSitzeHier = [];
                         foreach ($tisch['sitze'] as $sitz) {
@@ -304,7 +355,7 @@ include __DIR__ . '/../includes/navbar.php';
                             }
                         }
                     ?>
-                    <div class="col-6 col-md-4 col-xl-3">
+                    <div class="col-12 col-sm-6 col-xl-4">
                         <div class="card h-100 shadow-sm table-card">
 
                             <!-- Tisch-Header -->
@@ -318,7 +369,7 @@ include __DIR__ . '/../includes/navbar.php';
                             </div>
 
                             <!-- Sitzplatz-Chips -->
-                            <div class="card-body p-2 d-flex flex-wrap" style="gap:3px;">
+                            <div class="card-body p-2 seat-grid">
                                 <?php foreach ($tisch['sitze'] as $sitz):
                                     $sid    = $sitz['seat_id'];
                                     $snr    = (int)$sitz['sitzplatznummer'];
@@ -374,6 +425,15 @@ include __DIR__ . '/../includes/navbar.php';
                     <?php endforeach; ?>
                 </div>
 
+                <?php if (!empty($tischeVoll)): ?>
+                <div class="card border-0 shadow-sm mt-3">
+                    <div class="card-body py-2 small text-muted">
+                        <i class="bi bi-x-circle me-1"></i><?= htmlspecialchars(sprintf(__('seating.full_tables'), count($tischeVoll))) ?>:
+                        <?= htmlspecialchars(implode(', ', array_map(fn($t) => __('res.table') . ' ' . (int)$t['tischnummer'], $tischeVoll))) ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <?php endif; // tische ?>
             </div>
 
@@ -397,13 +457,15 @@ include __DIR__ . '/../includes/navbar.php';
                             <span class="badge bg-secondary">
                                 <?php
                                 echo match($zahlungsart) {
-                                    'paypal'       => '<i class="bi bi-paypal me-1"></i>' . __('payment.paypal'),
                                     'ueberweisung' => '<i class="bi bi-bank me-1"></i>' . htmlspecialchars(__('payment.ueberweisung')),
                                     default        => '<i class="bi bi-cash me-1"></i>' . htmlspecialchars(__('payment.bar')),
                                 };
                                 ?>
                             </span>
                         </div>
+
+                        <p class="small text-muted mb-2"><i class="bi bi-info-circle me-1"></i><?= htmlspecialchars(sprintf(__('seating.limit_hint'), $maxProBuchung)) ?></p>
+                        <div id="limitMsg" class="alert alert-warning py-1 px-2 small" hidden><?= htmlspecialchars(sprintf(__('seating.limit_reached'), $maxProBuchung)) ?></div>
 
                         <!-- Hinweis (initial sichtbar, JS blendet ihn aus) -->
                         <div id="noSelHint" class="text-center text-muted py-3">
@@ -457,6 +519,20 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
     </form>
 
+    <!-- Fixierte Leiste auf dem Handy: Auswahl + Reservieren immer erreichbar -->
+    <div class="mobile-book-bar d-lg-none" id="mobileBar" hidden>
+        <div class="d-flex align-items-center gap-3">
+            <div class="flex-grow-1">
+                <div class="fw-bold" id="mbCount"></div>
+                <div class="small text-white-50" id="mbTotal"></div>
+            </div>
+            <button type="submit" form="bookForm" class="btn btn-warning fw-bold px-4">
+                <i class="bi bi-check2-circle me-1"></i><?= __('seating.reserve') ?>
+            </button>
+        </div>
+    </div>
+    <?php endif; // buchbar ?>
+
     <?php endif; // selectedEvent ?>
     <?php endif; // events ?>
 
@@ -468,8 +544,12 @@ $extraScripts = '<script>
 (function() {
     var PREIS = ' . json_encode($ticketPreis) . ';
     var MSG_SELECT_SEAT = ' . json_encode(__('seating.js_select_seat_alert')) . ';
+    var LBL_COUNT = ' . json_encode(__('seating.sticky_selected')) . ';
     var form  = document.getElementById("bookForm");
     if (!form) return;
+    var MAX = parseInt(form.getAttribute("data-max") || "10", 10);
+
+    function euro(v) { return v.toFixed(2).replace(".", ",") + " €"; }
 
     function updatePanel() {
         var checked = form.querySelectorAll(".seat-input:checked");
@@ -477,6 +557,13 @@ $extraScripts = '<script>
         var summary = document.getElementById("selSummary");
         var list    = document.getElementById("selList");
         var total   = document.getElementById("selTotal");
+        var bar     = document.getElementById("mobileBar");
+
+        if (bar) {
+            bar.hidden = checked.length === 0;
+            document.getElementById("mbCount").textContent = LBL_COUNT.replace("%s", checked.length);
+            document.getElementById("mbTotal").textContent = euro(checked.length * PREIS);
+        }
         if (!hint || !summary || !list || !total) return;
 
         if (checked.length === 0) {
@@ -487,23 +574,34 @@ $extraScripts = '<script>
         hint.style.display    = "none";
         summary.style.display = "";
 
-        var html = "";
+        list.innerHTML = "";
         checked.forEach(function(cb) {
-            var t = cb.getAttribute("data-tisch");
-            var p = cb.getAttribute("data-platz");
-            html += "<div class=\"d-flex justify-content-between align-items-center mb-1\">" +
-                    "<span class=\"badge bg-success\">T" + t + " · P" + p + "</span>" +
-                    "<small class=\"text-muted\">' . $preisFormatiert . ' €</small>" +
-                    "</div>";
+            var row = document.createElement("div");
+            row.className = "d-flex justify-content-between align-items-center mb-1";
+            var badge = document.createElement("span");
+            badge.className = "badge bg-success";
+            badge.textContent = "T" + cb.getAttribute("data-tisch") + " · P" + cb.getAttribute("data-platz");
+            var price = document.createElement("small");
+            price.className = "text-muted";
+            price.textContent = euro(PREIS);
+            row.appendChild(badge); row.appendChild(price);
+            list.appendChild(row);
         });
-        list.innerHTML = html;
-        total.textContent = (checked.length * PREIS).toFixed(2).replace(".", ",") + " €";
+        total.textContent = euro(checked.length * PREIS);
     }
 
     form.addEventListener("change", function(e) {
-        if (e.target && e.target.classList.contains("seat-input")) {
-            updatePanel();
+        if (!e.target || !e.target.classList.contains("seat-input")) return;
+        var anzahl = form.querySelectorAll(".seat-input:checked").length;
+        var msg = document.getElementById("limitMsg");
+        // Limit sofort durchsetzen statt erst nach dem Abschicken abzulehnen
+        if (e.target.checked && anzahl > MAX) {
+            e.target.checked = false;
+            if (msg) { msg.hidden = false; }
+        } else if (msg) {
+            msg.hidden = true;
         }
+        updatePanel();
     });
 
     form.addEventListener("submit", function(e) {

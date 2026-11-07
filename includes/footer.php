@@ -2,15 +2,16 @@
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <span class="text-muted">
+                    <span class="footer-text">
                         <i class="bi bi-music-note-beamed text-warning"></i>
                         <?= htmlspecialchars(APP_NAME) ?> &copy; <?= date('Y') ?>
                     </span>
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <?php if (isLoggedIn()): ?>
-                    <small class="text-muted">
-                        <?= sprintf(__('footer.logged_in_as'), '<strong>' . htmlspecialchars($_SESSION['vorname'] . ' ' . $_SESSION['nachname']) . '</strong>') ?>
+                    <?php /* Einlass-Sitzungen haben kein Konto und ihren eigenen Abmelde-Link auf der Scan-Seite. */ ?>
+                    <?php if (isLoggedIn() && !hasRole('einlass')): ?>
+                    <small class="footer-text">
+                        <?= sprintf(__('footer.logged_in_as'), '<strong>' . htmlspecialchars(trim(($_SESSION['vorname'] ?? '') . ' ' . ($_SESSION['nachname'] ?? ''))) . '</strong>') ?>
                         | <a href="/includes/auth.php?action=logout" class="text-warning text-decoration-none"><?= __('nav.logout') ?></a>
                     </small>
                     <?php endif; ?>

@@ -66,6 +66,7 @@ function hexToRgb(string $hex): string {
     --club-dark:  <?= $dark ?>;
     --club-dark2: <?= $dark2 ?>;
     --club-light: <?= $bg ?>;
+    --club-red-rgb: <?= hexToRgb($primary) ?>;
 
     /* Bootstrap-Variablen mitziehen – sonst bliebe z.B. jede .btn-primary,
        jeder Modal-Header und jede KPI-Karte im Bootstrap-Standardblau. */
@@ -99,10 +100,12 @@ function hexToRgb(string $hex): string {
     --bs-btn-active-bg: <?= $primary ?>;
     --bs-btn-active-border-color: <?= $primary ?>;
 }
-.bg-primary  { background-color: <?= $primary ?> !important; }
-.text-primary{ color: <?= $primary ?> !important; }
+/* .bg-primary/.bg-dark/.text-primary NICHT hart überschreiben: Bootstraps
+   eigene Regeln lesen --bs-primary-rgb/--bs-dark-rgb (oben gesetzt) und
+   respektieren so bg-opacity-*/text-opacity-*. Eine feste Farbe mit
+   !important machte "bg-primary bg-opacity-10" zu einem voll roten Kasten,
+   in dem das rote Icon verschwand. */
 .border-primary { border-color: <?= $primary ?> !important; }
-.bg-dark     { background-color: <?= $dark ?> !important; }
 .navbar.bg-dark, footer.bg-dark { background-color: <?= $dark ?> !important; }
 .form-control:focus, .form-select:focus {
     border-color: <?= $primaryLight ?>;

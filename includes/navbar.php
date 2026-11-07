@@ -42,81 +42,79 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                     </a>
                 </li>
 
-                <?php if (isLoggedIn()): ?>
-                <li class="nav-item">
-                    <a class="nav-link <?= $currentPage === 'tischplan.php' ? 'active' : '' ?>"
-                       href="/pages/tischplan.php">
-                        <i class="bi bi-grid-3x3"></i> <?= __('nav.seating_plan') ?>
-                    </a>
-                </li>
+                <?php if (isLoggedIn() && !hasRole('kassierer', 'admin')): ?>
                 <li class="nav-item">
                     <a class="nav-link <?= $currentPage === 'meine_reservierungen.php' ? 'active' : '' ?>"
                        href="/pages/meine_reservierungen.php">
                         <i class="bi bi-ticket-perforated"></i> <?= __('nav.my_reservations') ?>
                     </a>
                 </li>
+                <?php endif; ?>
 
                 <?php if (hasRole('kassierer', 'admin')): ?>
+                <!-- Bereich "Abend": alles für den Einlass und die Kasse -->
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?= str_starts_with($currentPage, 'kassierer_') ? 'active' : '' ?>"
+                    <a class="nav-link dropdown-toggle <?= (str_starts_with($currentPage, 'kassierer_') || $currentPage === 'event_live_dashboard.php') ? 'active' : '' ?>"
                        href="#" data-bs-toggle="dropdown">
-                        <i class="bi bi-cash-register"></i> <?= __('nav.cashier') ?>
+                        <i class="bi bi-broadcast"></i> Abend
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark">
-                        <li><a class="dropdown-item" href="/pages/kassierer_dashboard.php">
-                            <i class="bi bi-speedometer2"></i> <?= __('nav.dashboard') ?>
-                        </a></li>
-                        <li><a class="dropdown-item" href="/pages/kassierer_guestlist.php">
-                            <i class="bi bi-people"></i> <?= __('nav.guestlist') ?>
-                        </a></li>
-                        <li><a class="dropdown-item" href="/pages/kassierer_statistiken.php">
-                            <i class="bi bi-bar-chart"></i> <?= __('nav.statistics') ?>
+                        <li><a class="dropdown-item" href="/pages/event_live_dashboard.php">
+                            <i class="bi bi-grid-3x3-gap"></i> Live-Übersicht
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/kassierer_scan.php">
-                            <i class="bi bi-qr-code-scan"></i> <?= __('nav.qr_scanner') ?>
+                            <i class="bi bi-qr-code-scan"></i> QR-Scanner
                         </a></li>
-                        <li><a class="dropdown-item" href="/pages/event_live_dashboard.php">
-                            <i class="bi bi-broadcast"></i> <?= __('nav.live_overview') ?>
+                        <li><a class="dropdown-item" href="/pages/kassierer_guestlist.php">
+                            <i class="bi bi-people"></i> Gästeliste
                         </a></li>
+                        <li><a class="dropdown-item" href="/pages/kassierer_dashboard.php">
+                            <i class="bi bi-cash-stack"></i> Kassen-Übersicht
+                        </a></li>
+                        <?php if (!hasRole('admin')): ?>
+                        <li><a class="dropdown-item" href="/pages/kassierer_statistiken.php">
+                            <i class="bi bi-bar-chart"></i> Statistik
+                        </a></li>
+                        <?php endif; ?>
                     </ul>
                 </li>
                 <?php endif; ?>
 
                 <?php if (hasRole('admin')): ?>
+                <!-- Bereich "Verwaltung": Vorbereitung und Auswertung -->
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle <?= str_starts_with($currentPage, 'admin_') ? 'active' : '' ?>"
                        href="#" data-bs-toggle="dropdown">
-                        <i class="bi bi-gear"></i> <?= __('nav.admin') ?>
+                        <i class="bi bi-gear"></i> Verwaltung
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark">
                         <li><a class="dropdown-item" href="/pages/admin_dashboard.php">
-                            <i class="bi bi-speedometer2"></i> <?= __('nav.dashboard') ?>
+                            <i class="bi bi-speedometer2"></i> Übersicht
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_events.php">
-                            <i class="bi bi-calendar-plus"></i> <?= __('nav.event_management') ?>
+                            <i class="bi bi-calendar-plus"></i> Events &amp; Tische
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_reservierungen.php">
-                            <i class="bi bi-ticket-perforated-fill"></i> <?= __('nav.reservations') ?>
+                            <i class="bi bi-ticket-perforated-fill"></i> Buchungen
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_users.php">
-                            <i class="bi bi-people-fill"></i> <?= __('nav.users') ?>
+                            <i class="bi bi-people-fill"></i> Benutzer
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_statistiken.php">
-                            <i class="bi bi-graph-up"></i> <?= __('nav.statistics') ?>
-                        </a></li>
-                        <li><a class="dropdown-item" href="/pages/admin_auditlog.php">
-                            <i class="bi bi-shield-check"></i> <?= __('nav.audit_log') ?>
+                            <i class="bi bi-graph-up"></i> Auswertung
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/pages/admin_einstellungen.php">
-                            <i class="bi bi-palette"></i> <?= __('nav.design_settings') ?>
+                            <i class="bi bi-palette"></i> Design &amp; Einstellungen
                         </a></li>
                         <li><a class="dropdown-item" href="/pages/admin_uebersetzungen.php">
-                            <i class="bi bi-translate"></i> <?= __('nav.translations') ?>
+                            <i class="bi bi-translate"></i> Übersetzungen
+                        </a></li>
+                        <li><a class="dropdown-item" href="/pages/admin_auditlog.php">
+                            <i class="bi bi-shield-check"></i> Audit-Log
                         </a></li>
                     </ul>
                 </li>
-                <?php endif; ?>
                 <?php endif; ?>
             </ul>
 
@@ -125,7 +123,7 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                         <i class="bi bi-person-circle"></i>
-                        <?= htmlspecialchars($_SESSION['vorname']) ?>
+                        <?= htmlspecialchars($_SESSION['vorname'] ?? '') ?>
                         <?php if (hasRole('admin')): ?>
                             <span class="badge bg-danger ms-1"><?= __('nav.admin') ?></span>
                         <?php elseif (hasRole('kassierer')): ?>
@@ -136,6 +134,11 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                         <li><a class="dropdown-item" href="/pages/profil.php">
                             <i class="bi bi-person"></i> <?= __('nav.my_profile') ?>
                         </a></li>
+                        <?php if (hasRole('kassierer', 'admin')): ?>
+                        <li><a class="dropdown-item" href="/pages/meine_reservierungen.php">
+                            <i class="bi bi-ticket-perforated"></i> <?= __('nav.my_reservations') ?>
+                        </a></li>
+                        <?php endif; ?>
                         <li><hr class="dropdown-divider"></li>
                         <li>
                             <a class="dropdown-item text-danger" href="/includes/auth.php?action=logout">
@@ -158,7 +161,9 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                 </li>
                 <?php endif; ?>
 
-                <!-- Sprachumschalter -->
+                <!-- Sprachumschalter: nur auf Gast-Seiten – die Personal- und
+                     Verwaltungsseiten gibt es nur auf Deutsch. -->
+                <?php if (!preg_match('/^(admin_|kassierer_|event_live_|einlass_)/', $currentPage)): ?>
                 <li class="nav-item ms-2">
                     <div class="btn-group btn-group-sm" role="group" aria-label="<?= htmlspecialchars(__('nav.language_aria')) ?>">
                         <a href="/api/set_lang.php?lang=de&redirect=<?= $currentUrl ?>"
@@ -169,6 +174,7 @@ $_navNameB = $_navDash !== false ? substr($_navAppName, $_navDash)    : '';
                            title="<?= htmlspecialchars(__('general.language_en')) ?>">EN</a>
                     </div>
                 </li>
+                <?php endif; ?>
             </ul>
         </div>
     </div>

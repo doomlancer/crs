@@ -124,26 +124,8 @@ try {
     error_log('Storno-Mail Fehler: ' . $e->getMessage());
 }
 
-// Warteliste: ältesten Eintrag für dieses Event benachrichtigen
-try {
-    $stmtWl = $pdo->prepare(
-        'SELECT u.email, u.vorname FROM waitlist w
-         JOIN users u ON w.user_id = u.id
-         WHERE w.event_id = ? ORDER BY w.erstellt_am ASC LIMIT 1'
-    );
-    $stmtWl->execute([(int)$res['event_id']]);
-    $nextUser = $stmtWl->fetch();
-    if ($nextUser) {
-        sendWaitlistNotification(
-            $nextUser['email'],
-            $nextUser['vorname'],
-            $res['event_name'],
-            APP_URL . '/pages/tischplan.php?event_id=' . (int)$res['event_id']
-        );
-    }
-} catch (Throwable $e) {
-    error_log('Wartelisten-Benachrichtigung fehlgeschlagen: ' . $e->getMessage());
-}
+// Ein Platz ist frei: nächste Person auf der Warteliste benachrichtigen
+benachrichtigeWarteliste((int)$res['event_id']);
 
 setFlash('success', 'Reservierung ' . htmlspecialchars($res['buchungsnummer']) . ' wurde erfolgreich storniert.');
 redirect($redirectUrl);

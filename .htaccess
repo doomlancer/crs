@@ -20,6 +20,11 @@ ErrorDocument 404 /pages/error_404.php
 # Konfigurationen herunterladen.
 RedirectMatch 404 /\.git(/|$)
 
+# Alle übrigen Punkt-Pfade (.claude/, .github/, .env, …) ebenfalls sperren –
+# sie landen sonst über "COPY ." im Container-Web-Root und sind per Browser
+# abrufbar. .well-known/ bleibt erreichbar (Let's-Encrypt-Prüfungen).
+RedirectMatch 404 /\.(?!well-known/)[^/]+
+
 # Sensible Dateien sperren.
 # Neben den Endungen unten auch die Projekt- und Deployment-Dateien, die im
 # Web-Root liegen: .env.example endet auf ".example" und fiel deshalb nicht

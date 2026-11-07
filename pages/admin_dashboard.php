@@ -19,7 +19,7 @@ $totalUsers = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
 $activeEvents = (int)$pdo->query("SELECT COUNT(*) FROM events WHERE status = 'aktiv'")->fetchColumn();
 
 // Gesamtreservierungen
-$totalReservations = (int)$pdo->query("SELECT COUNT(*) FROM reservations")->fetchColumn();
+$totalReservations = (int)$pdo->query("SELECT COUNT(*) FROM reservations WHERE status <> 'storniert'")->fetchColumn();
 
 // Gesamtumsatz (bezahlte Zahlungen)
 $totalRevenue = (float)$pdo->query(

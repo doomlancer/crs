@@ -95,6 +95,7 @@ include __DIR__ . '/../includes/header.php';
             <div id="result-icon" class="fs-1 lh-1 mb-1"></div>
             <div id="result-name" class="fw-bold fs-4"></div>
             <div id="result-detail" class="small"></div>
+            <div id="result-actions" class="d-flex flex-wrap justify-content-center gap-2 mt-2"></div>
         </div>
     </div>
 
@@ -217,9 +218,85 @@ $extraScripts = <<<'JS'
         name.textContent   = titleText;
         detail.textContent = detailText || '';
         box.classList.remove('d-none');
+        if (actions) actions.innerHTML = '';
 
         if (navigator.vibrate) navigator.vibrate(kind === 'ok' ? 120 : [80, 60, 80]);
         beep(kind === 'ok');
+    }
+
+
+    // ─── Aktionen im Ergebnis: bar kassieren, rückgängig, neu anmelden ───
+    var actions = document.getElementById('result-actions');
+    function aktionsKnopf(text, cls, onClick) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-lg fw-bold ' + cls;
+        b.textContent = text;
+        b.addEventListener('click', function () { b.disabled = true; onClick(b); });
+        actions.appendChild(b);
+        return b;
+    }
+    function postForm(url, felder) {
+        var fd = new FormData();
+        Object.keys(felder).forEach(function (k) { fd.append(k, felder[k]); });
+        fd.append('csrf_token', CSRF);
+        fd.append('format', 'json');
+        return fetch(url, {
+            method: 'POST', body: fd, credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+        }).then(function (r) { return r.json().catch(function () { return null; }); });
+    }
+    function euro(v) { return Number(v || 0).toFixed(2).replace('.', ',') + ' €'; }
+
+    function zeigeErfolg(d) {
+        var platz = d.platz || '';
+        if (d.zahl_status && d.zahl_status !== 'bezahlt') {
+            show('warn', d.gast || 'Eingecheckt', platz + ' · ZAHLUNG OFFEN: ' + euro(d.betrag) + ' kassieren');
+            aktionsKnopf(euro(d.betrag) + ' bar kassiert', 'btn-success', function (b) {
+                postForm('/api/update_payment.php', { reservation_id: d.reservation_id, payment_status: 'bezahlt', bar: '1' })
+                    .then(function (res) {
+                        if (res && res.success) {
+                            show('ok', d.gast || 'Eingecheckt', platz + ' · bezahlt');
+                            zeigeRueckgaengig(d);
+                        } else {
+                            b.disabled = false;
+                            detail.textContent = (res && res.message) || 'Zahlung konnte nicht gespeichert werden.';
+                        }
+                    })
+                    .catch(function () { b.disabled = false; });
+            });
+        } else {
+            show('ok', d.gast || 'Eingecheckt', platz);
+        }
+        zeigeRueckgaengig(d);
+    }
+
+    function zeigeRueckgaengig(d) {
+        aktionsKnopf('Rückgängig', 'btn-outline-dark', function (b) {
+            postForm('/api/checkin_undo.php', { reservation_id: d.reservation_id })
+                .then(function (res) {
+                    if (res && res.success) {
+                        okCount = Math.max(0, okCount - 1);
+                        document.getElementById('cnt-ok').textContent = okCount;
+                        show('warn', 'Check-in zurückgenommen', d.gast || '');
+                        lastCode = '';   // derselbe Code darf sofort erneut gescannt werden
+                    } else {
+                        b.disabled = false;
+                        detail.textContent = (res && res.message) || 'Rückgängig nicht möglich.';
+                    }
+                })
+                .catch(function () { b.disabled = false; });
+        });
+    }
+
+    // Abgelaufene Sitzung: klare Ansage statt "Serverfehler"
+    function zeigeAbgelaufen(res) {
+        show('err', 'Sitzung abgelaufen', 'Bitte neu anmelden – danach weiter scannen.');
+        var a = document.createElement('a');
+        a.className = 'btn btn-lg btn-dark fw-bold';
+        a.href = (res.data && res.data.login) || '/pages/login.php';
+        a.textContent = 'Neu anmelden';
+        actions.appendChild(a);
     }
 
     var audioCtx = null;
@@ -280,13 +357,10 @@ $extraScripts = <<<'JS'
             else if (res.success) {
                 var d = res.data || {};
                 okCount++;
-                var zusatz = d.platz || '';
-                if (d.zahl_status && d.zahl_status !== 'bezahlt') {
-                    show('warn', d.gast || 'Eingecheckt', 'ZAHLUNG OFFEN · ' + zusatz);
-                } else {
-                    show('ok', d.gast || 'Eingecheckt', zusatz);
-                }
-                addLog('ok', (d.gast || payload), t);
+                zeigeErfolg(d);
+                addLog('ok', (d.gast || payload) + (d.platz ? ' · ' + d.platz : ''), t);
+            } else if (res.data && res.data.code === 'session_expired') {
+                zeigeAbgelaufen(res);
             } else {
                 failCount++;
                 show('err', res.message || 'Abgelehnt', (res.data && res.data.gast) ? res.data.gast : '');
@@ -411,6 +485,7 @@ $extraScripts = <<<'JS'
             })
             .then(function (text) {
                 if (text) {
+                    status.textContent = 'Foto ausgewertet – Ergebnis siehe oben.';
                     handleCode(text);
                 } else {
                     status.textContent = 'Kein QR-Code im Foto erkannt. Bitte näher '
@@ -505,14 +580,17 @@ $extraScripts = <<<'JS'
                 method: 'POST', body: fd, credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             })
-            .then(function (r) { return r.json(); })
+            .then(function (r) { return r.json().catch(function () { return null; }); })
             .then(function (res) {
+                if (!res) { show('err', 'Serverfehler', 'Antwort nicht lesbar'); return; }
                 var t = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                 if (res.success) {
                     okCount++;
-                    show('ok', (res.data && res.data.gast) || 'Eingecheckt', (res.data && res.data.platz) || '');
-                    addLog('ok', (res.data && res.data.gast) || val, t);
+                    zeigeErfolg(res.data || {});
+                    addLog('ok', ((res.data && res.data.gast) || val) + (res.data && res.data.platz ? ' · ' + res.data.platz : ''), t);
                     input.value = '';
+                } else if (res.data && res.data.code === 'session_expired') {
+                    zeigeAbgelaufen(res);
                 } else {
                     failCount++;
                     show('err', res.message || 'Abgelehnt', '');

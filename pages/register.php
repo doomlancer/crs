@@ -23,7 +23,6 @@ $formData     = [
 $zahlungsarten = [
     'bar'          => __('payment.bar'),
     'ueberweisung' => __('payment.ueberweisung'),
-    'paypal'       => __('payment.paypal'), // Markenname, wird nicht übersetzt
 ];
 
 // POST-Handler

@@ -89,6 +89,7 @@ function loginUser(string $email, string $passwort): bool|string {
     // Session-ID erneuern (Session Fixation verhindern)
     session_regenerate_id(true);
 
+    unset($_SESSION['einlass_abgelaufen']);
     $_SESSION['user_id']   = $user['id'];
     $_SESSION['vorname']   = $user['vorname'];
     $_SESSION['nachname']  = $user['nachname'];
@@ -163,6 +164,7 @@ function loginEinlass(string $code): bool|string {
     unset($_SESSION['user_id'], $_SESSION['vorname'], $_SESSION['nachname'],
           $_SESSION['email'], $_SESSION['pw_epoche']);
 
+    unset($_SESSION['einlass_abgelaufen']);
     $_SESSION['einlass_id']       = (int)$match['id'];
     $_SESSION['einlass_event_id'] = (int)$match['event_id'];
     $_SESSION['einlass_label']    = $match['label'];
@@ -213,7 +215,7 @@ function registerUser(array $data): bool|array {
     if (!validateEmail($email))  $errors[] = 'Bitte geben Sie eine gültige E-Mail-Adresse ein.';
     if (!validatePassword($passwort)) $errors[] = 'Passwort muss mindestens 8 Zeichen lang sein.';
     if ($passwort !== $passwort2) $errors[] = 'Die Passwörter stimmen nicht überein.';
-    if (!in_array($zahlungsart, ['bar', 'ueberweisung', 'paypal'], true)) {
+    if (!in_array($zahlungsart, ['bar', 'ueberweisung'], true)) {
         $errors[] = 'Bitte wählen Sie eine gültige Zahlungsart.';
     }
 

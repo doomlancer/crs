@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($adresse !== '' && strlen($adresse) > 255) {
             $profilErrors[] = __('profil.address_max_length');
         }
-        if (!in_array($zahlungsart, ['bar', 'ueberweisung', 'paypal'], true)) {
+        if (!in_array($zahlungsart, ['bar', 'ueberweisung'], true)) {
             $profilErrors[] = __('auth.invalid_payment_method');
         }
 
@@ -168,7 +168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $zahlungsarten = [
     'bar'          => __('payment.bar'),
     'ueberweisung' => __('payment.ueberweisung'),
-    'paypal'       => __('payment.paypal'),
 ];
 
 $pageTitle = __('nav.my_profile');
@@ -391,7 +390,7 @@ include __DIR__ . '/../includes/navbar.php';
                                     <select
                                         id="zahlungsart"
                                         name="zahlungsart"
-                                        class="form-select <?= (!empty($profilErrors) && !in_array($formData['zahlungsart'], ['bar','ueberweisung','paypal'], true)) ? 'is-invalid' : '' ?>"
+                                        class="form-select <?= (!empty($profilErrors) && !in_array($formData['zahlungsart'], ['bar','ueberweisung'], true)) ? 'is-invalid' : '' ?>"
                                         required
                                     >
                                         <?php foreach ($zahlungsarten as $value => $label): ?>

@@ -14,21 +14,19 @@ if (isset($_GET['logout'])) {
 $pageTitle = __('index.page_title');
 $pdo = getDB();
 
-// Aktive Events laden
-$stmt = $pdo->prepare(
-    "SELECT e.*,
-        COUNT(s.id) AS gesamt_sitze,
-        SUM(CASE WHEN s.status != 'verfuegbar' THEN 1 ELSE 0 END) AS belegte_sitze
-     FROM events e
-     LEFT JOIN tables t ON t.event_id = e.id
-     LEFT JOIN seats s ON s.table_id = t.id
-     WHERE e.status != 'abgerechnet' AND e.datum >= CURDATE()
-     GROUP BY e.id
-     ORDER BY e.datum ASC
+// Die nächsten buchbaren Events (nur Status "aktiv"): Events in Planung
+// verdrängten sonst die eigentliche Hauptveranstaltung von der Startseite.
+$aktuelleEvents = $pdo->query(
+    "SELECT id, datum, name, beschreibung, status, preis, event_typ
+     FROM events
+     WHERE status = 'aktiv' AND datum >= CURDATE()
+     ORDER BY datum ASC
      LIMIT 3"
-);
-$stmt->execute();
-$aktuelleEvents = $stmt->fetchAll();
+)->fetchAll();
+foreach ($aktuelleEvents as &$ev) {
+    $ev['auslastung'] = getEventAuslastung((int)$ev['id']);
+}
+unset($ev);
 
 include __DIR__ . '/includes/header.php';
 include __DIR__ . '/includes/navbar.php';
@@ -76,8 +74,8 @@ include __DIR__ . '/includes/navbar.php';
                             <i class="bi bi-person-plus me-2"></i><?= __('auth.register_now') ?>
                         </a>
                         <?php else: ?>
-                        <a href="/pages/tischplan.php" class="btn btn-outline-light btn-lg px-4">
-                            <i class="bi bi-grid-3x3 me-2"></i><?= __('nav.seating_plan') ?>
+                        <a href="/pages/meine_reservierungen.php" class="btn btn-outline-light btn-lg px-4">
+                            <i class="bi bi-ticket-perforated me-2"></i><?= __('nav.my_reservations') ?>
                         </a>
                         <?php endif; ?>
                     </div>
@@ -130,10 +128,14 @@ include __DIR__ . '/includes/navbar.php';
             </h2>
             <div class="row g-4">
                 <?php foreach ($aktuelleEvents as $event):
-                    $gesamt  = (int)($event['gesamt_sitze'] ?? 0);
-                    $belegt  = (int)($event['belegte_sitze'] ?? 0);
-                    $prozent = $gesamt > 0 ? round(($belegt / $gesamt) * 100) : 0;
-                    $barColor = $prozent >= 90 ? 'bg-danger' : ($prozent >= 70 ? 'bg-warning' : 'bg-success');
+                    $a          = $event['auslastung'];
+                    $freiticket = ($event['event_typ'] ?? 'tischplan') === 'freie_tickets';
+                    $gesamt     = (int)$a['gesamt'];
+                    $belegt     = (int)$a['belegt'];
+                    $prozent    = (int)$a['prozent'];
+                    $voll       = $gesamt > 0 && (int)$a['frei'] <= 0;
+                    $barColor   = $prozent >= 90 ? 'bg-danger' : ($prozent >= 70 ? 'bg-warning' : 'bg-success');
+                    $preis      = (float)($event['preis'] ?? 0) > 0 ? (float)$event['preis'] : (float)TICKET_PREIS;
                 ?>
                 <div class="col-md-4">
                     <div class="card event-card h-100 shadow-sm">
@@ -158,16 +160,29 @@ include __DIR__ . '/includes/navbar.php';
                                 <div class="progress mb-3" style="height: 8px;">
                                     <div class="progress-bar <?= $barColor ?>" style="width: <?= $prozent ?>%"></div>
                                 </div>
-                                <small class="text-muted">
-                                    <i class="bi bi-people"></i>
-                                    <?= htmlspecialchars(sprintf(__('index.seats_taken_of_total'), $belegt, $gesamt)) ?>
-                                </small>
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">
+                                        <i class="bi bi-people"></i>
+                                        <?php if ($freiticket): ?>
+                                        <?= htmlspecialchars($gesamt > 0 ? sprintf(__('events.tickets_sold'), $belegt, $gesamt) : sprintf(__('events.tickets_sold_nolimit'), $belegt)) ?>
+                                        <?php else: ?>
+                                        <?= htmlspecialchars(sprintf(__('index.seats_taken_of_total'), $belegt, $gesamt)) ?>
+                                        <?php endif; ?>
+                                    </small>
+                                    <small class="fw-bold"><?= formatBetrag($preis) ?></small>
+                                </div>
                             </div>
                         </div>
                         <div class="card-footer bg-transparent">
-                            <a href="/pages/tischplan.php?event_id=<?= $event['id'] ?>" class="btn btn-outline-warning w-100">
-                                <i class="bi bi-grid-3x3 me-1"></i><?= __('index.show_seating_plan_button') ?>
+                            <?php if ($voll): ?>
+                            <a href="/pages/events.php" class="btn btn-outline-danger w-100">
+                                <i class="bi bi-x-circle me-1"></i><?= __('events.sold_out') ?>
                             </a>
+                            <?php else: ?>
+                            <a href="/pages/tischplan.php?event_id=<?= (int)$event['id'] ?>" class="btn btn-outline-warning w-100">
+                                <i class="bi <?= $freiticket ? 'bi-ticket-perforated' : 'bi-grid-3x3' ?> me-1"></i><?= $freiticket ? __('events.buy_tickets') : __('events.book_now') ?>
+                            </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -189,7 +204,7 @@ include __DIR__ . '/includes/navbar.php';
                 <i class="bi bi-emoji-laughing text-warning me-2"></i>
                 <?= __('index.cta_heading') ?>
             </h3>
-            <p class="text-muted mb-4"><?= __('index.cta_subtitle') ?></p>
+            <p class="text-white-50 mb-4"><?= __('index.cta_subtitle') ?></p>
             <?php if (!isLoggedIn()): ?>
             <a href="/pages/register.php" class="btn btn-warning btn-lg me-2">
                 <i class="bi bi-person-plus me-2"></i><?= __('index.cta_register_button') ?>
@@ -198,8 +213,8 @@ include __DIR__ . '/includes/navbar.php';
                 <i class="bi bi-box-arrow-in-right me-2"></i><?= __('auth.login_button') ?>
             </a>
             <?php else: ?>
-            <a href="/pages/tischplan.php" class="btn btn-warning btn-lg">
-                <i class="bi bi-grid-3x3 me-2"></i><?= __('index.cta_reserve_button') ?>
+            <a href="/pages/events.php" class="btn btn-warning btn-lg">
+                <i class="bi bi-calendar-event me-2"></i><?= __('index.cta_reserve_button') ?>
             </a>
             <?php endif; ?>
         </div>

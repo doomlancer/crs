@@ -93,12 +93,9 @@ foreach ($events as $ev) {
     $auslastungData[$ev['id']] = getEventAuslastung((int)$ev['id']);
 }
 
-// Durchschnittliche Auslastung über alle aktiven Events
-$avgAuslastung = 0;
-if (!empty($auslastungData)) {
-    $sumProzent = array_sum(array_column($auslastungData, 'prozent'));
-    $avgAuslastung = round($sumProzent / count($auslastungData));
-}
+// Auslastung des gewählten Events – ein Durchschnitt über alle Events
+// (inkl. solcher in Planung) hatte für die Kasse keine Aussage.
+$avgAuslastung = (int)($auslastungData[$selectedEventId]['prozent'] ?? 0);
 
 // ─── Reservierungen des gewählten Events ─────────────────────────────────────
 $reservierungen = [];
@@ -242,7 +239,7 @@ include __DIR__ . '/../includes/navbar.php';
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between">
                         <div>
-                            <p class="text-muted small mb-1">Ø Auslastung Events</p>
+                            <p class="text-muted small mb-1">Auslastung dieses Events</p>
                             <h4 class="fw-bold mb-0 text-info"><?= $avgAuslastung ?> %</h4>
                         </div>
                         <div class="bg-info bg-opacity-10 rounded-3 p-3">

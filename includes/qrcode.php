@@ -34,6 +34,42 @@ function qrCodeImg(string $inhalt, int $groesse = 160, string $altText = ''): st
 }
 
 /**
+ * QR-Code als PNG-Binärdaten (1 Bit Graustufen) – für E-Mails, die SVG und
+ * data:-URIs nicht anzeigen (Gmail, Outlook). Reines PHP, nur zlib nötig.
+ */
+function qrCodePng(string $inhalt, int $modulPx = 8, int $quietZone = 4): ?string {
+    if (!function_exists('gzcompress')) return null;
+    $m = qrBuildMatrix($inhalt);
+    if ($m === null) return null;
+
+    $n    = count($m);
+    $size = ($n + 2 * $quietZone) * $modulPx;
+    $raw  = '';
+    for ($y = 0; $y < $size; $y++) {
+        $my   = intdiv($y, $modulPx) - $quietZone;
+        $row  = "\0";                       // Filtertyp "None"
+        $byte = 0;
+        $bit  = 7;
+        for ($x = 0; $x < $size; $x++) {
+            $mx   = intdiv($x, $modulPx) - $quietZone;
+            $dark = $my >= 0 && $my < $n && $mx >= 0 && $mx < $n && $m[$my][$mx];
+            if (!$dark) $byte |= (1 << $bit); // 1 = weiß
+            if (--$bit < 0) { $row .= chr($byte); $byte = 0; $bit = 7; }
+        }
+        if ($bit !== 7) $row .= chr($byte);
+        $raw .= $row;
+    }
+
+    $chunk = static fn(string $typ, string $daten): string =>
+        pack('N', strlen($daten)) . $typ . $daten . pack('N', crc32($typ . $daten));
+
+    return "\x89PNG\r\n\x1a\n"
+        . $chunk('IHDR', pack('NNCCCCC', $size, $size, 1, 0, 0, 0, 0))
+        . $chunk('IDAT', gzcompress($raw, 9))
+        . $chunk('IEND', '');
+}
+
+/**
  * QR-Code als data:-URI (SVG, base64-kodiert).
  */
 function qrCodeDataUri(string $inhalt): ?string {
@@ -90,7 +126,9 @@ function qrCapacityTable(): array {
         7  => [124, 18, 4, 31, 0, 0],
         8  => [154, 22, 2, 38, 2, 39],
         9  => [182, 22, 3, 36, 2, 37],
-        10 => [216, 26, 4, 43, 1, 44],
+        // Version 10 bewusst nicht: ab dort ist das Längenfeld im Byte-Modus
+        // 16 statt 8 Bit lang, was qrBuildMatrix() nicht abbildet – die Codes
+        // wären unlesbar. Tickets brauchen nur Version 3 (33 Zeichen).
     ];
 }
 

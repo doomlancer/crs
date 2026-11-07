@@ -23,7 +23,7 @@ if (file_exists($envFile)) {
 // environment: durch). getenv() funktioniert unabhängig von variables_order.
 foreach ([
     'DB_HOST','DB_NAME','DB_USER','DB_PASS','DEBUG_MODE','APP_NAME','APP_URL',
-    'TICKET_PREIS','FORCE_HTTPS','PAYPAL_EMAIL','PAYPAL_SANDBOX',
+    'TICKET_PREIS','FORCE_HTTPS',
     'SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_FROM_NAME',
     'TICKET_SECRET','TICKET_SECRET_DIR','TRUSTED_PROXIES',
 ] as $__k) {
@@ -45,6 +45,16 @@ $_ENV['APP_URL']         ??= 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
 $_ENV['TICKET_PREIS']    ??= '15.00';
 $_ENV['SMTP_USER']       ??= '';
 $_ENV['SMTP_FROM_NAME']  ??= 'Kameruner-Tickets';
+
+// Zeitzone: Ohne diese Zeile laufen PHP und Datenbank in Docker in UTC – am
+// Einlass hieß es dann "eingecheckt um 21:46 Uhr", obwohl es 23:46 Uhr war.
+// TZ aus der Umgebung (docker-compose) hat Vorrang, sonst Europe/Berlin.
+$__tz = $_ENV['TZ'] ?? (getenv('TZ') ?: 'Europe/Berlin');
+if (!in_array($__tz, timezone_identifiers_list(), true)) {
+    $__tz = 'Europe/Berlin';
+}
+date_default_timezone_set($__tz);
+unset($__tz);
 
 define('DEBUG_MODE', filter_var($_ENV['DEBUG_MODE'], FILTER_VALIDATE_BOOLEAN));
 
@@ -71,6 +81,10 @@ define('DB_CHARSET', 'utf8mb4');
 define('APP_NAME',           $_ENV['APP_NAME']);
 define('APP_URL',            $_ENV['APP_URL']);
 define('SESSION_TIMEOUT',    1800);
+// Einlass-Helfer haben am Abend Wartepausen; nach 30 Minuten den Code neu
+// eingeben zu müssen, wäre am Eingang lästig. Ihre Sitzung hält deshalb bis
+// zu 8 Stunden ohne Aktivität (ein Veranstaltungsabend).
+define('EINLASS_SESSION_TIMEOUT', 28800);
 define('MAX_LOGIN_VERSUCHE', 5);
 define('LOGIN_SPERRZEIT',    900);
 define('TICKET_PREIS',       (float)$_ENV['TICKET_PREIS']);
@@ -95,6 +109,11 @@ function getDB(): PDO {
                 PDO::ATTR_EMULATE_PREPARES   => false,
                 PDO::MYSQL_ATTR_FOUND_ROWS   => true,
             ]);
+            // Datenbank-Sitzung auf dieselbe Zeitzone wie PHP stellen, damit
+            // NOW()/CURRENT_TIMESTAMP und date() übereinstimmen. Ein Offset
+            // statt eines Zonennamens, weil MariaDB die Zonentabellen oft
+            // nicht geladen hat.
+            $pdo->exec("SET time_zone = '" . date('P') . "'");
         } catch (PDOException $e) {
             error_log('DB-Verbindung fehlgeschlagen: ' . $e->getMessage());
             die(json_encode(['error' => 'Datenbankfehler. Bitte später erneut versuchen.']));
@@ -169,19 +188,30 @@ ini_set('session.cookie_httponly', 1);
 ini_set('session.cookie_secure', $isHttps ? 1 : 0);
 ini_set('session.use_strict_mode', 1);
 ini_set('session.cookie_samesite', 'Strict');
-ini_set('session.gc_maxlifetime', SESSION_TIMEOUT);
+// Die Garbage Collection darf Sitzungsdateien erst nach der längsten
+// erlaubten Dauer löschen; das kürzere Limit normaler Konten prüft der Block
+// unten selbst.
+ini_set('session.gc_maxlifetime', EINLASS_SESSION_TIMEOUT);
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 if (isset($_SESSION['letzte_aktivitaet'])) {
-    if (time() - $_SESSION['letzte_aktivitaet'] > SESSION_TIMEOUT) {
+    $__warEinlass = !empty($_SESSION['einlass_id']);
+    $__timeout    = $__warEinlass ? EINLASS_SESSION_TIMEOUT : SESSION_TIMEOUT;
+    if (time() - $_SESSION['letzte_aktivitaet'] > $__timeout) {
         session_unset();
         session_destroy();
         session_start();
         $_SESSION['timeout_message'] = 'Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.';
+        // Merkt sich, dass es ein Einlass-Zugang war: requireLogin() schickt
+        // dann zum Kurzcode-Login statt zum normalen Login.
+        if ($__warEinlass) {
+            $_SESSION['einlass_abgelaufen'] = true;
+        }
     }
+    unset($__warEinlass, $__timeout);
 }
 $_SESSION['letzte_aktivitaet'] = time();
 
@@ -206,7 +236,7 @@ if (!headers_sent()) {
         "connect-src {$cspSelf}",
         "frame-ancestors 'none'",
         "base-uri {$cspSelf}",
-        "form-action {$cspSelf} https://www.paypal.com https://www.sandbox.paypal.com",
+        "form-action {$cspSelf}",
     ];
     header('Content-Security-Policy: ' . implode('; ', $csp));
 }
@@ -218,12 +248,6 @@ if (!headers_sent()) {
 function withCspNonce(string $html): string {
     return preg_replace('/<script(?![^>]*\bnonce=)/i', '<script nonce="' . CSP_NONCE . '"', $html);
 }
-
-// Kein Vorgabewert: Ein fest einkompiliertes Empfängerkonto würde Zahlungen
-// stillschweigend auf ein fremdes Konto leiten, wenn die Konfiguration fehlt.
-// Ist der Wert leer, prüft api/paypal_ipn.php gar nicht erst weiter.
-define('PAYPAL_EMAIL',   $_ENV['PAYPAL_EMAIL']   ?? '');
-define('PAYPAL_SANDBOX', (bool)($_ENV['PAYPAL_SANDBOX'] ?? false));
 
 // ─────────────────────────────────────────────────────────────────────────
 // Geheimnis zum Signieren der Ticket-QR-Codes (HMAC).

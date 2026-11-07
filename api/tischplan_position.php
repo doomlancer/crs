@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['success' => false, 'message' => 'Nur POST erlaubt.', 'data' => null], 405);
 }
 
-requireRole('kassierer', 'admin');
+requireRole('admin');
 
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
     jsonResponse(['success' => false, 'message' => 'Sicherheitsfehler. Bitte Seite neu laden.', 'data' => null], 403);

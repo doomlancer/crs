@@ -350,8 +350,9 @@ include __DIR__ . '/../includes/navbar.php';
                     <i class="bi bi-filetype-csv me-1"></i>CSV
                 </a>
                 <a href="/api/export_guestlist.php?event_id=<?= $selectedEventId ?>&format=pdf"
-                   class="btn btn-outline-danger btn-sm">
-                    <i class="bi bi-filetype-pdf me-1"></i>PDF
+                   class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
+                   title="Druckansicht – über den Druckdialog auch als PDF speicherbar">
+                    <i class="bi bi-printer me-1"></i>Drucken
                 </a>
                 <?php endif; ?>
             </div>
@@ -444,12 +445,33 @@ include __DIR__ . '/../includes/navbar.php';
                             <?= htmlspecialchars(zahlungsartLabel($zart)) ?>
                         </td>
 
-                        <!-- Zahlungsstatus -->
+                        <!-- Zahlungsstatus (inkl. "bezahlt markieren", damit die
+                             Aktionsspalte immer gleich aufgebaut ist) -->
                         <td class="text-nowrap">
+                            <?php
+                            $zartActual = $g['zahlungsart'] ?? $g['user_zahlungsart'] ?? '';
+                            $canMarkPaid = $g['payment_id']
+                                && $g['zahl_status'] === 'offen'
+                                && in_array($zartActual, ['bar', 'ueberweisung'], true);
+                            ?>
                             <?php if ($g['zahl_status']): ?>
                                 <?= statusBadge($g['zahl_status']) ?>
                                 <?php if ($g['betrag']): ?>
-                                <br><small class="text-muted"><?= formatBetrag((float)$g['betrag']) ?></small>
+                                <small class="text-muted ms-1"><?= formatBetrag((float)$g['betrag']) ?></small>
+                                <?php endif; ?>
+                                <?php if ($canMarkPaid): ?>
+                                <form method="POST" action="" class="mt-1">
+                                    <?= csrfField() ?>
+                                    <input type="hidden" name="action"         value="bezahlt">
+                                    <input type="hidden" name="reservation_id" value="<?= (int)$g['id'] ?>">
+                                    <input type="hidden" name="event_id"       value="<?= $selectedEventId ?>">
+                                    <input type="hidden" name="suche"          value="<?= htmlspecialchars($suche) ?>">
+                                    <input type="hidden" name="status_filter"  value="<?= htmlspecialchars($statusFilter) ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary py-0"
+                                            data-confirm="Zahlung für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> als bezahlt markieren?">
+                                        <i class="bi bi-cash-coin me-1"></i>bezahlt
+                                    </button>
+                                </form>
                                 <?php endif; ?>
                             <?php else: ?>
                                 <span class="text-muted">–</span>
@@ -459,62 +481,40 @@ include __DIR__ . '/../includes/navbar.php';
                         <!-- Check-in-Status -->
                         <td><?= statusBadge($g['res_status']) ?></td>
 
-                        <!-- Aktionen -->
+                        <!-- Aktionen: immer [Hauptaktion] [QR] in fester Breite -->
                         <td class="text-end pe-3 text-nowrap">
-
-                            <!-- Dominante Aktion: entweder Check-in-Button ODER Status-Anzeige -->
+                            <div class="d-inline-flex gap-1 align-items-center">
                             <?php if ($g['res_status'] !== 'eingecheckt'): ?>
-                            <form method="POST" action="" class="d-inline">
+                            <form method="POST" action="" class="m-0">
                                 <?= csrfField() ?>
                                 <input type="hidden" name="action"         value="checkin">
                                 <input type="hidden" name="reservation_id" value="<?= (int)$g['id'] ?>">
                                 <input type="hidden" name="event_id"       value="<?= $selectedEventId ?>">
                                 <input type="hidden" name="suche"          value="<?= htmlspecialchars($suche) ?>">
                                 <input type="hidden" name="status_filter"  value="<?= htmlspecialchars($statusFilter) ?>">
-                                <button type="submit"
-                                        class="btn btn-sm btn-success fw-semibold"
-                                        title="Check-in durchführen"
+                                <button type="submit" class="btn btn-sm btn-success fw-semibold" style="min-width:8.5rem"
                                         data-confirm="Check-in für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> bestätigen?">
                                     <i class="bi bi-person-check-fill me-1"></i>Check-in
                                 </button>
                             </form>
                             <?php else: ?>
-                            <span class="text-success fw-semibold small">
-                                <i class="bi bi-check-circle-fill me-1"></i>Eingecheckt
-                            </span>
-                            <?php endif; ?>
-
-                            <!-- QR anzeigen (verlorenes Ticket erneut zeigen) – jetzt immer beschriftet -->
-                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
-                                    data-reservation-id="<?= (int)$g['id'] ?>"
-                                    title="QR-Code anzeigen">
-                                <i class="bi bi-qr-code me-1"></i>QR anzeigen
-                            </button>
-
-                            <!-- Bezahlt: sekundär, nur für bar/ueberweisung mit offener Zahlung -->
-                            <?php
-                            $zartActual = $g['zahlungsart'] ?? $g['user_zahlungsart'] ?? '';
-                            $canMarkPaid = $g['payment_id']
-                                && $g['zahl_status'] === 'offen'
-                                && in_array($zartActual, ['bar', 'ueberweisung'], true);
-                            ?>
-                            <?php if ($canMarkPaid): ?>
-                            <form method="POST" action="" class="d-inline ms-1">
+                            <form method="POST" action="/api/checkin_undo.php" class="m-0">
                                 <?= csrfField() ?>
-                                <input type="hidden" name="action"         value="bezahlt">
                                 <input type="hidden" name="reservation_id" value="<?= (int)$g['id'] ?>">
-                                <input type="hidden" name="event_id"       value="<?= $selectedEventId ?>">
-                                <input type="hidden" name="suche"          value="<?= htmlspecialchars($suche) ?>">
-                                <input type="hidden" name="status_filter"  value="<?= htmlspecialchars($statusFilter) ?>">
-                                <button type="submit"
-                                        class="btn btn-sm btn-link text-decoration-none"
-                                        title="Als bezahlt markieren"
-                                        data-confirm="Zahlung für <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> als bezahlt markieren?">
-                                    Als bezahlt markieren
+                                <input type="hidden" name="redirect" value="<?= htmlspecialchars('/pages/kassierer_guestlist.php?' . http_build_query(array_filter(['event_id' => $selectedEventId, 'suche' => $suche, 'status' => $statusFilter]), '', '&', PHP_QUERY_RFC3986)) ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" style="min-width:8.5rem"
+                                        data-confirm="Check-in von <?= htmlspecialchars($g['vorname'] . ' ' . $g['nachname'], ENT_QUOTES) ?> zurücknehmen?">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Rückgängig
                                 </button>
                             </form>
                             <?php endif; ?>
 
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    data-reservation-id="<?= (int)$g['id'] ?>"
+                                    title="QR-Code anzeigen (z. B. bei verlorenem Ticket)">
+                                <i class="bi bi-qr-code me-1"></i>QR
+                            </button>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>

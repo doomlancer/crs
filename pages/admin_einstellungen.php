@@ -70,7 +70,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Ungültige Schriftart.';
         }
 
+        // Bankverbindung für Überweisungen (erscheint in Bestätigungs-Mail,
+        // "Meine Tickets" und auf der Ticket-Seite). Leer = keine Angabe.
+        $iban = strtoupper(preg_replace('/\s+/', '', (string)($_POST['bank_iban'] ?? '')));
+        $bic  = strtoupper(preg_replace('/\s+/', '', (string)($_POST['bank_bic'] ?? '')));
+        if ($iban !== '' && !preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/', $iban)) {
+            $errors[] = 'Die IBAN hat kein gültiges Format.';
+        }
+        if ($bic !== '' && !preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/', $bic)) {
+            $errors[] = 'Die BIC hat kein gültiges Format.';
+        }
+
         if (empty($errors)) {
+            setSetting('bank_inhaber', mb_substr(trim((string)($_POST['bank_inhaber'] ?? '')), 0, 100));
+            setSetting('bank_iban', $iban !== '' ? trim(chunk_split($iban, 4, ' ')) : '');
+            setSetting('bank_bic', $bic);
+            setSetting('bank_name', mb_substr(trim((string)($_POST['bank_name'] ?? '')), 0, 100));
             foreach ($colorFields as $field) {
                 $val = trim($_POST[$field] ?? '');
                 if (preg_match($hexRe, $val)) setSetting($field, $val);
@@ -320,6 +335,40 @@ include __DIR__ . '/../includes/navbar.php';
                             <input type="text" name="app_slogan" class="form-control"
                                    value="<?= htmlspecialchars($s['app_slogan']) ?>"
                                    maxlength="200" placeholder="Ihr Slogan für die Startseite (optional)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Bankverbindung ──────────────────────────────────────────── -->
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header fw-semibold">
+                        <i class="bi bi-bank text-warning me-2"></i>Bankverbindung für Überweisungen
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">Gäste mit Zahlungsart „Überweisung“ sehen diese Angaben in der Bestätigungs-Mail, unter „Meine Tickets“ und auf ihrem Ticket-Link – zusammen mit Betrag und Verwendungszweck. Leer lassen, wenn die Bankverbindung anders mitgeteilt wird.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="bank_inhaber">Kontoinhaber</label>
+                                <input type="text" name="bank_inhaber" id="bank_inhaber" class="form-control" maxlength="100"
+                                       value="<?= htmlspecialchars(getSetting('bank_inhaber')) ?>" placeholder="z.B. KG Die Kameruner e.V.">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="bank_iban">IBAN</label>
+                                <input type="text" name="bank_iban" id="bank_iban" class="form-control font-monospace" maxlength="42"
+                                       value="<?= htmlspecialchars(getSetting('bank_iban')) ?>" placeholder="DE00 0000 0000 0000 0000 00">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="bank_bic">BIC</label>
+                                <input type="text" name="bank_bic" id="bank_bic" class="form-control font-monospace" maxlength="11"
+                                       value="<?= htmlspecialchars(getSetting('bank_bic')) ?>">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="bank_name">Bank</label>
+                                <input type="text" name="bank_name" id="bank_name" class="form-control" maxlength="100"
+                                       value="<?= htmlspecialchars(getSetting('bank_name')) ?>">
+                            </div>
                         </div>
                     </div>
                 </div>

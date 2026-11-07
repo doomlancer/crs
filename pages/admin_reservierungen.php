@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Tisch + Event ermitteln
         $stmtTbl = $pdo->prepare(
-            'SELECT t.id, t.event_id, e.status AS event_status
+            'SELECT t.id, t.event_id, e.status AS event_status, e.preis AS event_preis
              FROM `tables` t JOIN events e ON t.event_id = e.id
              WHERE t.id = ?'
         );
@@ -48,6 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/pages/admin_reservierungen.php');
         }
         $newEventId = (int)$tbl['event_id'];
+        // Preis des Events, nicht der globale Standardpreis
+        $eventPreis = (float)($tbl['event_preis'] ?: TICKET_PREIS);
+        $neueNummern = [];
 
         $pdo->beginTransaction();
         try {
@@ -85,16 +88,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($availSeats as $seatId) {
                 $bn = generateBuchungsnummer();
-                $stmtRes->execute([$newUserId, $newEventId, $seatId, $bn, TICKET_PREIS]);
+                $stmtRes->execute([$newUserId, $newEventId, $seatId, $bn, $eventPreis]);
                 $rid = (int)$pdo->lastInsertId();
-                $stmtPay->execute([$rid, $zahlungsart, TICKET_PREIS]);
+                $stmtPay->execute([$rid, $zahlungsart, $eventPreis]);
+                $neueNummern[] = $bn;
                 $stmtSeat->execute([$seatId]);
                 logAudit('ADMIN_RESERVIERUNG', 'reservations', $rid,
                     "Admin #{$myId} erstellt Reservierung: {$bn}");
             }
 
             $pdo->commit();
-            setFlash('success', $newAnzahl . ' Platz/Plätze erfolgreich reserviert.');
+            $pdo->prepare('DELETE FROM waitlist WHERE user_id = ? AND event_id = ?')->execute([$newUserId, $newEventId]);
+            // Der Gast bekommt seine Tickets (QR je Person) per Mail
+            sendReservierungsbestaetigung($newUserId, $newEventId, $neueNummern);
+            setFlash('success', $newAnzahl . ' Platz/Plätze reserviert, Tickets per E-Mail an den Gast verschickt.');
         } catch (PDOException $e) {
             $pdo->rollBack();
             error_log('Admin-Neue-Reservierung: ' . $e->getMessage());
@@ -129,7 +136,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reservationId = (int)($_POST['reservation_id'] ?? 0);
         if ($reservationId > 0) {
             $stmt = $pdo->prepare(
-                'SELECT r.seat_id, r.buchungsnummer FROM reservations r
+                'SELECT r.seat_id, r.buchungsnummer, r.event_id, u.email, u.vorname, e.name AS event_name
+                 FROM reservations r
+                 JOIN users u  ON u.id = r.user_id
+                 JOIN events e ON e.id = r.event_id
                  WHERE r.id = ? AND r.status = "geplant"'
             );
             $stmt->execute([$reservationId]);
@@ -146,6 +156,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     logAudit('STORNIERUNG', 'reservations', $reservationId,
                         "Admin #{$myId} storniert: {$res['buchungsnummer']}");
                     $pdo->commit();
+                    // Gast informieren und den frei gewordenen Platz an die
+                    // Warteliste weitergeben – beides fehlte bei Admin-Stornos.
+                    try {
+                        sendStornierungsbestaetigung($res['email'], $res['vorname'], $res['buchungsnummer'], $res['event_name']);
+                    } catch (Throwable $e) {
+                        error_log('Storno-Mail Fehler: ' . $e->getMessage());
+                    }
+                    benachrichtigeWarteliste((int)$res['event_id']);
                     setFlash('success', "Reservierung {$res['buchungsnummer']} storniert.");
                 } catch (PDOException $e) {
                     $pdo->rollBack();
@@ -203,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Filter
 // ═══════════════════════════════════════════════════════════════════
 $filterEvent  = (int)($_GET['event_id'] ?? 0);
-$filterStatus = in_array($_GET['status'] ?? '', ['', 'geplant', 'eingecheckt', 'abgerechnet'])
+$filterStatus = in_array($_GET['status'] ?? '', ['', 'geplant', 'eingecheckt', 'abgerechnet', 'storniert'])
                 ? ($_GET['status'] ?? '') : '';
 $search       = trim($_GET['search'] ?? '');
 
@@ -267,7 +285,7 @@ $reservierungen = $stmt->fetchAll();
 $gesamt      = count($reservierungen);
 $geplant     = count(array_filter($reservierungen, fn($r) => $r['status'] === 'geplant'));
 $eingecheckt = count(array_filter($reservierungen, fn($r) => $r['status'] === 'eingecheckt'));
-$storniert   = count(array_filter($reservierungen, fn($r) => $r['status'] === 'abgerechnet'));
+$storniert   = count(array_filter($reservierungen, fn($r) => $r['status'] === 'storniert'));
 $bezahlt     = count(array_filter($reservierungen, fn($r) => $r['payment_status'] === 'bezahlt'));
 $umsatz      = array_sum(array_column(
     array_filter($reservierungen, fn($r) => $r['payment_status'] === 'bezahlt'), 'preis'
@@ -345,7 +363,8 @@ include __DIR__ . '/../includes/navbar.php';
                         <option value="">Alle</option>
                         <option value="geplant"     <?= $filterStatus === 'geplant'     ? 'selected' : '' ?>>Geplant</option>
                         <option value="eingecheckt" <?= $filterStatus === 'eingecheckt' ? 'selected' : '' ?>>Eingecheckt</option>
-                        <option value="abgerechnet" <?= $filterStatus === 'abgerechnet' ? 'selected' : '' ?>>Storniert</option>
+                        <option value="storniert" <?= $filterStatus === 'storniert' ? 'selected' : '' ?>>Storniert</option>
+                        <option value="abgerechnet" <?= $filterStatus === 'abgerechnet' ? 'selected' : '' ?>>Abgerechnet</option>
                     </select>
                 </div>
                 <div class="col-12 col-md-4">
