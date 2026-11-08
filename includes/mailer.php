@@ -1,13 +1,159 @@
 <?php
 /**
- * E-Mail-Versand via PHP mail() – kein Composer, kein PHPMailer nötig
- * Funktioniert auf jedem Shared-Hosting / Plesk-Server
+ * E-Mail-Versand – kein Composer, kein PHPMailer nötig.
+ *
+ * Drei Wege, in dieser Reihenfolge:
+ *  1. SMTP_HOST in der .env (Docker): der Entrypoint richtet msmtp ein, PHP
+ *     mail() liefert darüber aus.
+ *  2. SMTP-Zugang im Admin-Bereich (Design & Einstellungen): wird in
+ *     GEHEIM_DIR abgelegt, die App ruft msmtp direkt mit dieser Konfiguration
+ *     auf. Braucht keine Konsole auf dem Server.
+ *  3. Sonst PHP mail() mit der Mail-Konfiguration des Servers (Plesk/Shared
+ *     Hosting).
  */
+
+const MSMTP_BINARY = '/usr/bin/msmtp';
+
+/** Fehlertext des letzten fehlgeschlagenen Versands (für die Testmail). */
+function mailLetzterFehler(?string $setzen = null): string {
+    static $fehler = '';
+    if ($setzen !== null) $fehler = $setzen;
+    return $fehler;
+}
+
+/** Ist msmtp vorhanden (Docker-Image)? Nur dann gibt es Weg 2. */
+function smtpAdminMoeglich(): bool {
+    return is_executable(MSMTP_BINARY) && function_exists('proc_open');
+}
+
+/**
+ * Im Admin-Bereich hinterlegter SMTP-Zugang (ohne Passwort, wenn
+ * $mitPasswort = false). Leeres Array = nichts hinterlegt.
+ */
+function smtpEinstellungen(bool $mitPasswort = false): array {
+    $datei = GEHEIM_DIR . '/smtp.json';
+    if (!is_readable($datei)) return [];
+    $e = json_decode((string)@file_get_contents($datei), true);
+    if (!is_array($e) || empty($e['host'])) return [];
+    if (!$mitPasswort) {
+        $e['passwort_gesetzt'] = ($e['passwort'] ?? '') !== '';
+        unset($e['passwort']);
+    }
+    return $e;
+}
+
+/**
+ * Welcher Weg ist aktiv? 'env' | 'admin' | 'server'
+ */
+function mailWeg(): string {
+    if (!empty($_ENV['SMTP_HOST'])) return 'env';
+    if (smtpAdminMoeglich() && smtpEinstellungen()) return 'admin';
+    return 'server';
+}
+
+/** Absenderadresse und -name für den aktiven Weg. */
+function mailAbsender(): array {
+    $name = $_ENV['SMTP_FROM_NAME'] ?? (getSetting('app_name', '') ?: APP_NAME);
+    if (mailWeg() === 'admin') {
+        $e = smtpEinstellungen();
+        return [$e['absender'], ($e['absender_name'] ?? '') !== '' ? $e['absender_name'] : $name];
+    }
+    return [$_ENV['SMTP_USER'] ?? 'noreply@localhost', $name];
+}
+
+/**
+ * Speichert den SMTP-Zugang aus dem Admin-Bereich und erzeugt daraus die
+ * msmtp-Konfiguration. $e['passwort'] === null behält das bisherige Passwort.
+ * Leerer Host entfernt den Zugang.
+ */
+function smtpEinstellungenSpeichern(array $e): bool {
+    if (($e['host'] ?? '') === '') {
+        @unlink(GEHEIM_DIR . '/smtp.json');
+        @unlink(GEHEIM_DIR . '/msmtprc');
+        return true;
+    }
+    if (($e['passwort'] ?? null) === null) {
+        $e['passwort'] = smtpEinstellungen(true)['passwort'] ?? '';
+    }
+
+    // msmtp entfernt nur die äußeren Anführungszeichen und liest alles dazwischen
+    // wörtlich – es gibt keine Maskierung mit \ (siehe trim_string() in msmtp
+    // conf.c). So bleiben auch Leerzeichen am Rand und " im Passwort erhalten.
+    // Zeilenumbrüche sind vorher ausgeschlossen – sie würden eigene Direktiven
+    // erlauben.
+    $q = static fn(string $v): string => '"' . str_replace(["\r", "\n", "\0"], '', $v) . '"';
+    $tls = $e['verschluesselung'] !== 'keine';
+    $rc  = "# Automatisch erzeugt aus Verwaltung → Design & Einstellungen. Nicht von Hand ändern.\n"
+         . "defaults\n"
+         . "timeout 20\n"
+         . "syslog off\n"
+         . 'logfile ' . $q(dirname(__DIR__) . '/logs/msmtp.log') . "\n"
+         . "tls_trust_file /etc/ssl/certs/ca-certificates.crt\n"
+         . "\naccount default\n"
+         . 'host ' . $q($e['host']) . "\n"
+         . 'port ' . (int)$e['port'] . "\n"
+         . 'tls ' . ($tls ? 'on' : 'off') . "\n"
+         . ($tls ? 'tls_starttls ' . ($e['verschluesselung'] === 'starttls' ? 'on' : 'off') . "\n" : '')
+         . 'from ' . $q($e['absender']) . "\n";
+    if ($e['benutzer'] !== '') {
+        $rc .= "auth on\n"
+             . 'user ' . $q($e['benutzer']) . "\n"
+             . 'password ' . $q($e['passwort']) . "\n";
+    } else {
+        $rc .= "auth off\n";
+    }
+
+    return geheimDateiSchreiben('msmtprc', $rc)
+        && geheimDateiSchreiben('smtp.json', json_encode($e, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * Liefert eine fertige Nachricht über msmtp mit der Admin-Konfiguration aus.
+ * Anders als mail() bekommen wir hier die Fehlermeldung des Mailservers.
+ */
+function mailUeberMsmtp(string $to, string $from, string $nachricht): bool {
+    $rc = GEHEIM_DIR . '/msmtprc';
+    if (!is_readable($rc)) {
+        // Volume neu angelegt o. Ä.: aus smtp.json neu erzeugen.
+        $e = smtpEinstellungen(true);
+        if (!$e || !smtpEinstellungenSpeichern($e)) {
+            mailLetzterFehler('SMTP-Konfiguration fehlt.');
+            return false;
+        }
+    }
+
+    $proc = @proc_open(
+        [MSMTP_BINARY, '-C', $rc, '-f', $from, '--', $to],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+    if (!is_resource($proc)) {
+        mailLetzterFehler('msmtp konnte nicht gestartet werden.');
+        return false;
+    }
+    fwrite($pipes[0], $nachricht);
+    fclose($pipes[0]);
+    stream_get_contents($pipes[1]);
+    $stderr = trim((string)stream_get_contents($pipes[2]));
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $code = proc_close($proc);
+
+    if ($code !== 0) {
+        // msmtp schreibt "msmtp: <Grund>" – Präfix weg, Zeilen zusammenfassen.
+        $grund = preg_replace('/^msmtp:\s*/m', '', $stderr);
+        mailLetzterFehler(trim(preg_replace('/\s*\n\s*/', ' – ', $grund)) ?: "msmtp-Fehlercode {$code}");
+        error_log('msmtp-Versand fehlgeschlagen (' . $code . '): ' . $stderr);
+        return false;
+    }
+    return true;
+}
 
 /**
  * Kern-Funktion: sendet eine HTML-E-Mail mit Plaintext-Fallback
  */
 function sendMail(string $to, string $toName, string $subject, string $htmlBody, string $textBody, array $inlineBilder = []): bool {
+    mailLetzterFehler('');
     // Betreff und Anzeigename sind durch die Base64-Kodierung unten bereits
     // gegen Header-Injection geschützt, die Empfängeradresse dagegen wird roh
     // interpoliert. Alle heutigen Aufrufer liefern geprüfte Adressen – diese
@@ -18,8 +164,7 @@ function sendMail(string $to, string $toName, string $subject, string $htmlBody,
         return false;
     }
 
-    $from     = $_ENV['SMTP_USER'] ?? 'noreply@localhost';
-    $fromName = $_ENV['SMTP_FROM_NAME'] ?? APP_NAME;
+    [$from, $fromName] = mailAbsender();
     $altGrenze = '----=_Alt_' . md5(uniqid((string)time(), true));
 
     $alternative  = "--{$altGrenze}\r\n";
@@ -64,11 +209,49 @@ function sendMail(string $to, string $toName, string $subject, string $htmlBody,
     $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
     $encodedTo      = '=?UTF-8?B?' . base64_encode($toName) . "?= <{$to}>";
 
+    if (mailWeg() === 'admin') {
+        $domain    = substr(strrchr($from, '@') ?: '@localhost', 1);
+        $nachricht = "To: {$encodedTo}\r\n"
+                   . "Subject: {$encodedSubject}\r\n"
+                   . 'Date: ' . date('r') . "\r\n"
+                   . 'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . $domain . ">\r\n"
+                   . $headers . "\r\n" . $body;
+        return mailUeberMsmtp($to, $from, $nachricht);
+    }
+
     $result = mail($encodedTo, $encodedSubject, $body, $headers);
     if (!$result) {
         error_log("mail() fehlgeschlagen an: {$to}, Betreff: {$subject}");
+        mailLetzterFehler(mailLogLetzteZeile() ?: 'Der Server hat den Versand abgelehnt.');
     }
     return $result;
+}
+
+/** Letzte Zeile aus dem msmtp-Log (Weg 1), um Fehler sichtbar zu machen. */
+function mailLogLetzteZeile(): string {
+    $log = dirname(__DIR__) . '/logs/msmtp.log';
+    if (!is_readable($log)) return '';
+    $f = @fopen($log, 'r');
+    if (!$f) return '';
+    fseek($f, max(0, filesize($log) - 2000));
+    $zeilen = array_filter(explode("\n", (string)stream_get_contents($f)));
+    fclose($f);
+    $letzte = (string)end($zeilen);
+    // msmtp-Logzeile: "... smtpstatus=535 smtpmsg='535 ...' errormsg='...' exitcode=..."
+    if (preg_match("/errormsg='([^']*)'/", $letzte, $m)) return $m[1];
+    return '';
+}
+
+/** Testmail aus dem Admin-Bereich. */
+function mailTest(string $email, string $vorname): bool {
+    $html = emailTemplate('Testmail',
+        "<p>Hallo " . htmlspecialchars($vorname) . ",</p>
+         <p>diese Testmail zeigt: Der Mailversand von <strong>" . htmlspecialchars(getSetting('app_name', '') ?: APP_NAME) . "</strong> funktioniert.
+         Buchungsbestätigungen, Tickets und Warteliste-Nachrichten kommen damit bei den Gästen an.</p>
+         <p style=\"color:#666;font-size:13px;\">Verschickt am " . date('d.m.Y, H:i') . " Uhr.</p>"
+    );
+    $text = "Hallo {$vorname},\n\ndiese Testmail zeigt: Der Mailversand funktioniert.\n";
+    return sendMail($email, $vorname, 'Testmail – Mailversand funktioniert', $html, $text);
 }
 
 function mailPasswordReset(string $email, string $vorname, string $resetUrl): bool {

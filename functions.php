@@ -963,6 +963,61 @@ function settingsTableExists(): bool {
 }
 
 // =====================
+// Geheimnisse (GEHEIM_DIR)
+// =====================
+
+/**
+ * Schreibt eine Datei in GEHEIM_DIR, nur für den Webserver-Benutzer lesbar.
+ * Über eine temporäre Datei und rename(), damit parallel laufende Anfragen nie
+ * eine halb geschriebene Datei lesen – beim Ticket-Schlüssel würde das sonst
+ * einen zufälligen Schlüssel erzeugen.
+ */
+function geheimDateiSchreiben(string $name, string $inhalt): bool {
+    if (!preg_match('/^[a-z0-9_.-]+$/', $name)) return false;
+    if (!is_dir(GEHEIM_DIR) && !@mkdir(GEHEIM_DIR, 0700, true)) return false;
+
+    $ziel = GEHEIM_DIR . '/' . $name;
+    $tmp  = GEHEIM_DIR . '/.' . $name . '.' . bin2hex(random_bytes(4)) . '.tmp';
+    $alt  = umask(0077);
+    try {
+        if (@file_put_contents($tmp, $inhalt) !== strlen($inhalt)) {
+            @unlink($tmp);
+            return false;
+        }
+        @chmod($tmp, 0600);
+        if (!@rename($tmp, $ziel)) {
+            @unlink($tmp);
+            return false;
+        }
+    } finally {
+        umask($alt);
+    }
+    return true;
+}
+
+/**
+ * Woher der Ticket-Schlüssel kommt: 'env' (TICKET_SECRET in der .env – nur
+ * dort änderbar) oder 'datei' (automatisch erzeugt in GEHEIM_DIR).
+ */
+function ticketSchluesselQuelle(): string {
+    return !empty($_ENV['TICKET_SECRET']) ? 'env' : 'datei';
+}
+
+/**
+ * Erzeugt einen neuen Ticket-Schlüssel. Danach sind alle bisher ausgegebenen
+ * QR-Codes und Ticket-Links ungültig; "Meine Tickets" und neue Ticket-Links
+ * zeigen ab der nächsten Anfrage Codes mit dem neuen Schlüssel.
+ */
+function ticketSchluesselErneuern(): bool {
+    if (ticketSchluesselQuelle() !== 'datei') return false;
+    $neu = bin2hex(random_bytes(32));
+    if (!geheimDateiSchreiben('ticket_secret', $neu)) return false;
+    // Altbestand aus früheren Versionen darf den neuen Schlüssel nie ersetzen.
+    @unlink(__DIR__ . '/uploads/.ticket_secret');
+    return trim((string)@file_get_contents(GEHEIM_DIR . '/ticket_secret')) === $neu;
+}
+
+// =====================
 // Sicherer Bild-Upload
 // =====================
 

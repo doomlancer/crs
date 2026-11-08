@@ -61,6 +61,11 @@ try {
     $dbStatus = 'Fehler';
 }
 
+// Ohne Mailversand bekommen Gäste weder Bestätigung noch Tickets – das soll
+// sofort auffallen, nicht erst bei der ersten Beschwerde.
+require_once __DIR__ . '/../includes/mailer.php';
+$mailFehlt = mailWeg() === 'server' && smtpAdminMoeglich();
+
 $pageTitle  = 'Admin Dashboard';
 $bodyClass  = 'bg-light';
 include __DIR__ . '/../includes/header.php';
@@ -94,6 +99,14 @@ include __DIR__ . '/../includes/navbar.php';
     </div>
 
     <?= getFlash() ?>
+
+    <?php if ($mailFehlt): ?>
+    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <span><i class="bi bi-envelope-exclamation me-2"></i><strong>E-Mail-Versand ist nicht eingerichtet.</strong>
+            Gäste bekommen keine Buchungsbestätigung und keine Tickets per Mail.</span>
+        <a href="/pages/admin_einstellungen.php#mail" class="btn btn-sm btn-warning fw-semibold">Jetzt einrichten</a>
+    </div>
+    <?php endif; ?>
 
     <!-- ── KPI-Karten ─────────────────────────────────────────────────────────── -->
     <div class="row g-3 mb-4">

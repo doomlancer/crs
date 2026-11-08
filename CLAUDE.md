@@ -16,7 +16,7 @@ CRS (Card Reservating System, branded "Kameruner-Tickets") is a German-language 
 
 **Alternative: classic hosting (Plesk/FTP)**: copy `.env.example` → `.env`, import `setup_plesk.sql`, upload files, run `/migrate_web.php` once as admin, then delete it. `uploads/` and `logs/` must be writable.
 
-No Composer, no `vendor/`. Everything is plain PHP: QR codes are generated in `includes/qrcode.php` (pure PHP, SVG and PNG), mail goes through PHP `mail()` (msmtp in Docker).
+No Composer, no `vendor/`. Everything is plain PHP: QR codes are generated in `includes/qrcode.php` (pure PHP, SVG and PNG), mail goes through msmtp in Docker: either `SMTP_HOST` in `.env` (entrypoint writes `/etc/msmtprc`, PHP `mail()`) or the SMTP access entered under Design & Einstellungen (stored in `GEHEIM_DIR`, msmtp called via `proc_open` so the server's error is shown); classic hosting uses the server's `mail()`.
 
 ### Frontend (optional)
 ```
@@ -37,7 +37,8 @@ functions.php       ← shared helpers: CSRF, auth (currentIdentity/currentEinla
 includes/
   auth.php          ← loginUser(), loginEinlass(), logout*, registerUser()
   header.php/footer.php/navbar.php
-  mailer.php        ← mail() wrappers; confirmation mail embeds one QR PNG per ticket (cid:)
+  mailer.php        ← sendMail() + transport choice (mailWeg()), SMTP settings, test mail;
+                      confirmation mail embeds one QR PNG per ticket (cid:)
   qrcode.php        ← pure-PHP QR encoder (versions 1–9, level M), SVG + PNG output
   ticket_karte.php  ← ticket card + payment hint rendering
 pages/              ← one file per view, accessed directly (/pages/xyz.php)
@@ -85,7 +86,7 @@ Add files to `migrations/` numbered sequentially (`016_…sql`). Write them re-r
 - bcrypt passwords; login rate-limited (5 failures → 15 min lock, plus per-IP limit); Einlass codes rate-limited per IP.
 - Sessions regenerate on login; role and account status re-checked against the DB on every request.
 - CSP with nonces (set in `config.php`); `.htaccess` blocks dot-paths, `.sql/.log/.env/...` and PHP in `uploads/`.
-- Ticket QR codes and ticket links are HMAC-signed with `TICKET_SECRET`.
+- Ticket QR codes and ticket links are HMAC-signed with `TICKET_SECRET` (from `.env`, else a file in `GEHEIM_DIR` = `/var/www/crs-secrets`, volume `app_secrets`; renewable in Design & Einstellungen). Secrets are written with `geheimDateiSchreiben()` (0600, atomic).
 
 ## CI
 

@@ -87,7 +87,16 @@ immer HTTP auf Port 80; TLS macht der Proxy.
 ### E-Mail (optional)
 
 Ohne SMTP-Daten funktioniert alles außer dem Mailversand
-(Buchungsbestätigung, Passwort-Reset, Warteliste). Zum Aktivieren in `.env`:
+(Buchungsbestätigung, Tickets, Passwort-Reset, Warteliste).
+
+**Am einfachsten im Browser:** als Admin unter *Verwaltung → Design &
+Einstellungen → E-Mail-Versand* Mailserver, Port, Benutzer und Passwort
+eintragen und „Speichern & Testmail“ klicken. Die Testmail zeigt sofort, ob es
+klappt, oder die Fehlermeldung des Mailservers. Der Zugang liegt danach
+geschützt im Volume `app_secrets` (nicht in der Datenbank) und übersteht
+Updates.
+
+**Alternativ in der `.env`** (hat Vorrang vor der Einstellung im Browser):
 
 ```
 SMTP_HOST=smtp.deinprovider.de
@@ -260,8 +269,14 @@ Ein bereits vorhandener Schlüssel aus einer älteren Installation
 der alten Stelle gelöscht. **Den Wert nie ändern, solange Tickets im Umlauf
 sind** — alle versendeten QR-Codes würden ungültig.
 
+**Schlüssel könnte bekannt geworden sein** (Screenshot, Chat, …)? Unter
+*Verwaltung → Design & Einstellungen → Ticket-Schlüssel* einen neuen erzeugen.
+Die Seite zeigt vorher, wie viele gültige Tickets betroffen wären; die Gäste
+finden die neuen QR-Codes unter „Meine Tickets“. (Steht der Schlüssel in der
+`.env`, wird er nur dort geändert.)
+
 Den aktuellen Schlüssel auslesen (z. B. um ihn in die `.env` zu übernehmen oder
-zu sichern):
+zu sichern) – die Ausgabe nicht weitergeben:
 
 ```bash
 docker compose exec app cat /var/www/crs-secrets/ticket_secret

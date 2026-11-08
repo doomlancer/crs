@@ -264,10 +264,15 @@ function withCspNonce(string $html): string {
 // gelöscht. Er darf nicht einfach neu erzeugt werden, sonst würden alle
 // bereits versendeten QR-Codes ungültig.
 // ─────────────────────────────────────────────────────────────────────────
+// Verzeichnis für Geheimnisse (Ticket-Schlüssel, SMTP-Zugang aus dem
+// Admin-Bereich). Liegt oberhalb der DocumentRoot, im Docker-Betrieb im Volume
+// app_secrets – übersteht also Updates.
+define('GEHEIM_DIR', rtrim($_ENV['TICKET_SECRET_DIR'] ?? dirname(__DIR__) . '/crs-secrets', '/'));
+
 if (!empty($_ENV['TICKET_SECRET'])) {
     define('TICKET_SECRET', $_ENV['TICKET_SECRET']);
 } else {
-    $__secretDir  = $_ENV['TICKET_SECRET_DIR'] ?? dirname(__DIR__) . '/crs-secrets';
+    $__secretDir  = GEHEIM_DIR;
     $__secretFile = $__secretDir . '/ticket_secret';
     $__legacyFile = __DIR__ . '/uploads/.ticket_secret';
     $__secret     = '';

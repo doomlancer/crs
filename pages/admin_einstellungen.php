@@ -7,9 +7,12 @@ require_once __DIR__ . '/../functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 
 requireRole('admin');
+require_once __DIR__ . '/../includes/mailer.php';
 $pdo = getDB();
 
-$errors = [];
+$errors    = [];
+$smtpForm  = null;   // bei Fehleingabe: die abgeschickten Werte (ohne Passwort)
+$ich       = currentIdentity();
 
 // ─── Auto-Migration: settings-Tabelle bei Bedarf erstellen ───────────────────
 if (!settingsTableExists()) {
@@ -161,7 +164,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         setFlash('success', 'Favicon entfernt.');
         redirect('/pages/admin_einstellungen.php');
     }
+
+    // ── E-Mail-Versand (SMTP) ──────────────────────────────────────────────────
+    if (in_array($postAction, ['save_smtp', 'save_smtp_test', 'remove_smtp'], true)) {
+        if (mailWeg() === 'env' || !smtpAdminMoeglich()) {
+            setFlash('error', 'Der Mailversand wird auf diesem Server nicht hier eingestellt.');
+            redirect('/pages/admin_einstellungen.php#mail');
+        }
+
+        if ($postAction === 'remove_smtp') {
+            smtpEinstellungenSpeichern(['host' => '']);
+            logAudit('UPDATE', 'settings', null, 'SMTP-Zugang entfernt');
+            setFlash('success', 'SMTP-Zugang entfernt. Es werden keine Mails mehr verschickt.');
+            redirect('/pages/admin_einstellungen.php#mail');
+        }
+
+        $smtpForm = [
+            'host'             => trim((string)($_POST['smtp_host'] ?? '')),
+            'port'             => (int)($_POST['smtp_port'] ?? 0),
+            'verschluesselung' => (string)($_POST['smtp_verschluesselung'] ?? 'starttls'),
+            'benutzer'         => trim((string)($_POST['smtp_benutzer'] ?? '')),
+            'absender'         => trim((string)($_POST['smtp_absender'] ?? '')),
+            'absender_name'    => trim((string)($_POST['smtp_absender_name'] ?? '')),
+        ];
+        $passwort = (string)($_POST['smtp_passwort'] ?? '');
+        $bisher   = smtpEinstellungen();
+
+        if (!preg_match('/^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/', $smtpForm['host'])) {
+            $errors[] = 'Bitte den Mailserver als Namen angeben, z. B. smtp.ionos.de.';
+        }
+        if ($smtpForm['port'] < 1 || $smtpForm['port'] > 65535) {
+            $errors[] = 'Der Port muss zwischen 1 und 65535 liegen (meist 587 oder 465).';
+        }
+        if (!in_array($smtpForm['verschluesselung'], ['starttls', 'ssl', 'keine'], true)) {
+            $errors[] = 'Ungültige Verschlüsselung.';
+        }
+        foreach ([$smtpForm['benutzer'], $passwort, $smtpForm['absender_name']] as $wert) {
+            if (preg_match('/[\x00-\x1f\x7f]/', $wert)) {
+                $errors[] = 'Die Angaben dürfen keine Zeilenumbrüche oder Steuerzeichen enthalten.';
+                break;
+            }
+        }
+        if (mb_strlen($smtpForm['benutzer']) > 200 || strlen($passwort) > 200 || mb_strlen($smtpForm['absender_name']) > 100) {
+            $errors[] = 'Eine der Angaben ist zu lang.';
+        }
+        if ($smtpForm['absender'] === '' && filter_var($smtpForm['benutzer'], FILTER_VALIDATE_EMAIL)) {
+            $smtpForm['absender'] = $smtpForm['benutzer'];
+        }
+        if (!filter_var($smtpForm['absender'], FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Bitte eine gültige Absender-Adresse angeben.';
+        }
+        if ($smtpForm['verschluesselung'] === 'keine' && $smtpForm['benutzer'] !== '') {
+            // msmtp schickt Passwörter nie unverschlüsselt – und das ist gut so.
+            $errors[] = 'Mit Benutzername und Passwort bitte STARTTLS oder SSL/TLS wählen – ohne Verschlüsselung würde das Passwort lesbar übertragen.';
+        }
+        if ($smtpForm['benutzer'] !== '' && $passwort === '' && empty($bisher['passwort_gesetzt'])) {
+            $errors[] = 'Bitte das Passwort des Postfachs eingeben.';
+        }
+
+        if (empty($errors)) {
+            $ok = smtpEinstellungenSpeichern($smtpForm + ['passwort' => $passwort === '' ? null : $passwort]);
+            if (!$ok) {
+                setFlash('error', 'Der SMTP-Zugang konnte nicht gespeichert werden (Verzeichnis ' . GEHEIM_DIR . ' nicht beschreibbar).');
+                redirect('/pages/admin_einstellungen.php#mail');
+            }
+            logAudit('UPDATE', 'settings', null, 'SMTP-Zugang gespeichert (' . $smtpForm['host'] . ')');
+
+            if ($postAction === 'save_smtp_test' && $ich) {
+                if (mailTest($ich['email'], $ich['vorname'])) {
+                    setFlash('success', 'Gespeichert. Testmail an ' . $ich['email'] . ' ist verschickt – bitte auch im Spam-Ordner nachsehen.');
+                } else {
+                    setFlash('error', 'Gespeichert, aber die Testmail ging nicht raus: ' . (mailLetzterFehler() ?: 'unbekannter Fehler'));
+                }
+            } else {
+                setFlash('success', 'SMTP-Zugang gespeichert.');
+            }
+            redirect('/pages/admin_einstellungen.php#mail');
+        }
+    }
+
+    // ── Testmail (für den Weg über .env oder den Webserver) ────────────────────
+    if ($postAction === 'test_mail' && $ich) {
+        if (mailTest($ich['email'], $ich['vorname'])) {
+            setFlash('success', 'Testmail an ' . $ich['email'] . ' ist verschickt – bitte auch im Spam-Ordner nachsehen.');
+        } else {
+            setFlash('error', 'Die Testmail ging nicht raus: ' . (mailLetzterFehler() ?: 'unbekannter Fehler'));
+        }
+        redirect('/pages/admin_einstellungen.php#mail');
+    }
+
+    // ── Ticket-Schlüssel erneuern ──────────────────────────────────────────────
+    if ($postAction === 'rotate_ticket_key') {
+        if (empty($_POST['bestaetigt'])) {
+            setFlash('error', 'Bitte bestätigen Sie, dass bisherige QR-Codes ungültig werden.');
+            redirect('/pages/admin_einstellungen.php#sicherheit');
+        }
+        if (ticketSchluesselQuelle() !== 'datei') {
+            setFlash('error', 'Der Schlüssel steht in der Server-Konfiguration (.env) und kann nur dort geändert werden.');
+            redirect('/pages/admin_einstellungen.php#sicherheit');
+        }
+        $betroffen = (int)$pdo->query(
+            "SELECT COUNT(*) FROM reservations r JOIN events e ON e.id = r.event_id
+             WHERE r.status = 'geplant' AND e.datum >= CURDATE()"
+        )->fetchColumn();
+        if (ticketSchluesselErneuern()) {
+            logAudit('UPDATE', 'settings', null, "Ticket-Schlüssel erneuert ({$betroffen} gültige Tickets betroffen)");
+            setFlash('success', 'Neuer Ticket-Schlüssel ist aktiv. Alle bisherigen QR-Codes und Ticket-Links sind ab sofort ungültig.');
+        } else {
+            setFlash('error', 'Der neue Schlüssel konnte nicht gespeichert werden. Der bisherige bleibt gültig.');
+        }
+        redirect('/pages/admin_einstellungen.php#sicherheit');
+    }
 }
+
+// ─── E-Mail-Versand und Ticket-Schlüssel: Anzeige ────────────────────────────
+$mailWeg     = mailWeg();
+$smtpMoeglich = smtpAdminMoeglich();
+$smtpGesp    = smtpEinstellungen();
+$smtpWerte   = $smtpForm ?? ($smtpGesp + [
+    'host' => '', 'port' => 587, 'verschluesselung' => 'starttls',
+    'benutzer' => '', 'absender' => '', 'absender_name' => '',
+]);
+$schluesselQuelle = ticketSchluesselQuelle();
+$aktiveTickets = (int)$pdo->query(
+    "SELECT COUNT(*) FROM reservations r JOIN events e ON e.id = r.event_id
+     WHERE r.status = 'geplant' AND e.datum >= CURDATE()"
+)->fetchColumn();
 
 // ─── Aktuelle Einstellungen laden ─────────────────────────────────────────────
 $s = getAllSettings();
@@ -192,7 +320,7 @@ include __DIR__ . '/../includes/navbar.php';
             <h1 class="h3 fw-bold mb-0">
                 <i class="bi bi-palette text-warning me-2"></i>Design & Einstellungen
             </h1>
-            <p class="text-muted mb-0 small">Farben, Logo, Schriftart und Markentext konfigurieren</p>
+            <p class="text-muted mb-0 small">Farben, Logo, Bankverbindung, E-Mail-Versand und Ticket-Schlüssel</p>
         </div>
         <a href="/pages/admin_dashboard.php" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-arrow-left me-1"></i>Zurück
@@ -515,6 +643,167 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
     </div>
 
+    <!-- ── E-Mail-Versand ───────────────────────────────────────────────────── -->
+    <div class="row g-4 mt-2">
+        <div class="col-12" id="mail">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-envelope-at text-warning me-2"></i>E-Mail-Versand
+                </div>
+                <div class="card-body">
+                    <?php if ($mailWeg === 'env'): ?>
+                    <div class="alert alert-info small">
+                        <i class="bi bi-hdd-network me-1"></i>
+                        Eingerichtet über die Server-Konfiguration (.env), Mailserver
+                        <strong><?= htmlspecialchars((string)$_ENV['SMTP_HOST']) ?></strong>. Diese Einstellung hat Vorrang und wird nur dort geändert.
+                    </div>
+                    <?php elseif ($mailWeg === 'admin'): ?>
+                    <div class="alert alert-success small">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Aktiv: Mails gehen über <strong><?= htmlspecialchars($smtpGesp['host']) ?></strong>
+                        mit Absender <strong><?= htmlspecialchars($smtpGesp['absender']) ?></strong>.
+                    </div>
+                    <?php elseif ($smtpMoeglich): ?>
+                    <div class="alert alert-warning small">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        <strong>Noch nicht eingerichtet – es werden keine Mails verschickt.</strong>
+                        Gäste bekommen weder Buchungsbestätigung noch Tickets, „Passwort vergessen“ und die Warteliste funktionieren nicht.
+                    </div>
+                    <?php else: ?>
+                    <div class="alert alert-secondary small">
+                        Die Mails verschickt der Webserver selbst (klassisches Hosting). Hier ist nichts einzustellen.
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($smtpMoeglich && $mailWeg !== 'env'): ?>
+                    <p class="text-muted small">
+                        Die Angaben finden Sie bei Ihrem E-Mail-Anbieter – es sind dieselben wie im Mailprogramm
+                        für den <strong>Postausgang (SMTP)</strong>. Das Passwort wird geschützt auf dem Server abgelegt
+                        und hier nie wieder angezeigt.
+                    </p>
+                    <form method="POST" action="/pages/admin_einstellungen.php#mail" autocomplete="off">
+                        <?= csrfField() ?>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="smtp_host">Mailserver (SMTP)</label>
+                                <input type="text" name="smtp_host" id="smtp_host" class="form-control" maxlength="253" required
+                                       value="<?= htmlspecialchars($smtpWerte['host']) ?>" placeholder="z. B. smtp.ionos.de">
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label fw-semibold small" for="smtp_verschluesselung">Verschlüsselung</label>
+                                <select name="smtp_verschluesselung" id="smtp_verschluesselung" class="form-select">
+                                    <?php foreach (['starttls' => 'STARTTLS (üblich)', 'ssl' => 'SSL/TLS', 'keine' => 'keine (nur eigener Server ohne Anmeldung)'] as $k => $l): ?>
+                                    <option value="<?= $k ?>" <?= $smtpWerte['verschluesselung'] === $k ? 'selected' : '' ?>><?= $l ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label fw-semibold small" for="smtp_port">Port</label>
+                                <input type="number" name="smtp_port" id="smtp_port" class="form-control" min="1" max="65535" required
+                                       value="<?= (int)$smtpWerte['port'] ?>">
+                                <div class="form-text">STARTTLS: 587 · SSL/TLS: 465</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="smtp_benutzer">Benutzername</label>
+                                <input type="text" name="smtp_benutzer" id="smtp_benutzer" class="form-control" maxlength="200"
+                                       value="<?= htmlspecialchars($smtpWerte['benutzer']) ?>" placeholder="meist die E-Mail-Adresse" autocomplete="off">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="smtp_passwort">Passwort</label>
+                                <input type="password" name="smtp_passwort" id="smtp_passwort" class="form-control" maxlength="200"
+                                       autocomplete="new-password"
+                                       placeholder="<?= !empty($smtpGesp['passwort_gesetzt']) ? 'gespeichert – leer lassen, um es zu behalten' : '' ?>">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="smtp_absender">Absender-Adresse</label>
+                                <input type="email" name="smtp_absender" id="smtp_absender" class="form-control" maxlength="200"
+                                       value="<?= htmlspecialchars($smtpWerte['absender']) ?>" placeholder="leer = Benutzername">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold small" for="smtp_absender_name">Absender-Name</label>
+                                <input type="text" name="smtp_absender_name" id="smtp_absender_name" class="form-control" maxlength="100"
+                                       value="<?= htmlspecialchars($smtpWerte['absender_name']) ?>"
+                                       placeholder="<?= htmlspecialchars(getSetting('app_name', '') ?: APP_NAME) ?>">
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <button type="submit" name="post_action" value="save_smtp_test" class="btn btn-warning fw-bold">
+                                <i class="bi bi-send me-1"></i>Speichern &amp; Testmail an <?= htmlspecialchars($ich['email'] ?? 'mich') ?>
+                            </button>
+                            <button type="submit" name="post_action" value="save_smtp" class="btn btn-outline-secondary">
+                                Nur speichern
+                            </button>
+                        </div>
+                    </form>
+                    <?php if ($mailWeg === 'admin'): ?>
+                    <form method="POST" action="/pages/admin_einstellungen.php#mail" class="mt-3">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="post_action" value="remove_smtp">
+                        <button type="submit" class="btn btn-link btn-sm text-danger p-0"
+                                data-confirm="SMTP-Zugang entfernen? Danach werden keine Mails mehr verschickt.">
+                            Zugang entfernen
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                    <?php else: ?>
+                    <form method="POST" action="/pages/admin_einstellungen.php#mail">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="post_action" value="test_mail">
+                        <button type="submit" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-send me-1"></i>Testmail an <?= htmlspecialchars($ich['email'] ?? 'mich') ?> senden
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Ticket-Schlüssel ─────────────────────────────────────────────── -->
+        <div class="col-12" id="sicherheit">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-shield-lock text-warning me-2"></i>Ticket-Schlüssel
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Mit diesem geheimen Schlüssel sind alle QR-Codes und Ticket-Links unterschrieben. Wer ihn kennt,
+                        kann gültige Tickets fälschen. Erzeugen Sie einen neuen, wenn er in fremde Hände geraten sein
+                        könnte – zum Beispiel, weil er per Screenshot oder Chat geteilt wurde.
+                    </p>
+                    <?php if ($schluesselQuelle === 'env'): ?>
+                    <div class="alert alert-info small mb-0">
+                        Der Schlüssel steht in der Server-Konfiguration (.env, <code>TICKET_SECRET</code>) und kann nur dort geändert werden.
+                    </div>
+                    <?php else: ?>
+                    <div class="alert <?= $aktiveTickets > 0 ? 'alert-warning' : 'alert-light border' ?> small">
+                        <?php if ($aktiveTickets > 0): ?>
+                        <strong><?= $aktiveTickets ?> gültige Tickets</strong> für kommende Events wären betroffen.
+                        Bereits verschickte Mails und ausgedruckte Tickets funktionieren am Einlass dann nicht mehr –
+                        die Gäste finden die neuen QR-Codes unter „Meine Tickets“.
+                        <?php else: ?>
+                        Für kommende Events gibt es noch keine gültigen Tickets – ein neuer Schlüssel hat keine Nachteile.
+                        <?php endif; ?>
+                    </div>
+                    <form method="POST" action="/pages/admin_einstellungen.php#sicherheit">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="post_action" value="rotate_ticket_key">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="bestaetigt" value="1" id="schluessel_ok" required>
+                            <label class="form-check-label small" for="schluessel_ok">
+                                Mir ist klar, dass alle bisher ausgegebenen QR-Codes und Ticket-Links ungültig werden.
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                data-confirm="Wirklich einen neuen Ticket-Schlüssel erzeugen? Alle bisherigen QR-Codes werden ungültig.">
+                            <i class="bi bi-arrow-repeat me-1"></i>Neuen Schlüssel erzeugen
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </main>
 
 <?php
@@ -596,6 +885,16 @@ $extraScripts = <<<HTML
         fontSelect.addEventListener('change', function () {
             var stack = fontStacks[fontSelect.value] || fontStacks['system'];
             if (fontPreview) fontPreview.style.fontFamily = stack;
+        });
+    }
+
+    // ─── SMTP: Standard-Port passend zur Verschlüsselung ──────────────────
+    var vs = document.getElementById('smtp_verschluesselung');
+    var port = document.getElementById('smtp_port');
+    if (vs && port) {
+        var standard = { starttls: '587', ssl: '465', keine: '25' };
+        vs.addEventListener('change', function () {
+            if (['587', '465', '25', ''].indexOf(port.value) !== -1) port.value = standard[vs.value];
         });
     }
 })();
